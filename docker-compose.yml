@@ -1,0 +1,148 @@
+version: "3.9"
+
+services:
+  # ============================================================
+  # PostgreSQL 16 — 业务数据库
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: platform-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-platform123}
+      POSTGRES_DB: ${POSTGRES_DB:-platform_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-platform} -d ${POSTGRES_DB:-platform_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - platform-net
+
+  # ============================================================
+  # Redis 7 — 缓存 + Session
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: platform-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis123} --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis123}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - platform-net
+
+  # ============================================================
+  # MinIO — 对象存储（文件服务器）
+  # ============================================================
+  minio:
+    image: minio/minio:latest
+    container_name: platform-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - platform-net
+
+  # MinIO 初始化 — 自动创建 bucket
+  minio-init:
+    image: minio/mc:latest
+    container_name: platform-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin123};
+      mc mb local/documents --ignore-existing;
+      mc anonymous set download local/documents;
+      echo 'MinIO bucket [documents] ready';
+      "
+    networks:
+      - platform-net
+
+  # ============================================================
+  # RocketMQ NameServer — 注册中心
+  # ============================================================
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.3.1
+    container_name: platform-rmq-namesrv
+    restart: unless-stopped
+    environment:
+      JAVA_OPT_EXT: "-server -Xms256m -Xmx256m -Xmn128m"
+    command: sh mqnamesrv
+    ports:
+      - "9876:9876"
+    volumes:
+      - rocketmq_namesrv_data:/home/rocketmq/logs
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9876' 2>/dev/null && exit 0 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - platform-net
+
+  # RocketMQ Broker — 消息代理
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.1
+    container_name: platform-rmq-broker
+    restart: unless-stopped
+    depends_on:
+      rocketmq-namesrv:
+        condition: service_healthy
+    environment:
+      JAVA_OPT_EXT: "-server -Xms512m -Xmx512m -Xmn256m"
+      NAMESRV_ADDR: "rocketmq-namesrv:9876"
+    command: sh mqbroker -c /home/rocketmq/conf/broker.conf
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+    volumes:
+      - rocketmq_broker_data:/home/rocketmq/logs
+      - rocketmq_broker_store:/home/rocketmq/store
+      - ./rocketmq/broker.conf:/home/rocketmq/conf/broker.conf:ro
+    networks:
+      - platform-net
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  rocketmq_namesrv_data:
+    driver: local
+  rocketmq_broker_data:
+    driver: local
+  rocketmq_broker_store:
+    driver: local
+
+networks:
+  platform-net:
+    driver: bridge
