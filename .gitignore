@@ -1,0 +1,12 @@
+.env
+.agents/skills/*
+.claude/*
+.trae/*
+.idea/*
+skills-lock.json
+.vscode/settings.json
+
+
+backend-java/*
+
+
