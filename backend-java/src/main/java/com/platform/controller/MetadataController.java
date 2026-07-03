@@ -28,7 +28,7 @@ public class MetadataController {
     private final ExportHistoryMapper exportHistoryMapper;
 
     @GetMapping("/fields")
-    @PreAuthorize("hasAuthority('ROLE_metadata:list')")
+    @PreAuthorize("hasAuthority('metadata:list')")
     public ApiResponse<PageResult<Map<String, Object>>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
@@ -62,44 +62,44 @@ public class MetadataController {
     }
 
     @GetMapping("/fields/{id}")
-    @PreAuthorize("hasAuthority('ROLE_metadata:list')")
+    @PreAuthorize("hasAuthority('metadata:list')")
     public ApiResponse<MetadataField> detail(@PathVariable Long id) {
         return ApiResponse.success(metadataFieldService.getById(id));
     }
 
     @PostMapping("/fields")
-    @PreAuthorize("hasAuthority('ROLE_metadata:list')")
+    @PreAuthorize("hasAuthority('metadata:list')")
     public ApiResponse<MetadataField> create(@RequestBody MetadataField field) {
         return ApiResponse.success(metadataFieldService.create(field));
     }
 
     @PutMapping("/fields/{id}")
-    @PreAuthorize("hasAuthority('ROLE_metadata:update')")
+    @PreAuthorize("hasAuthority('metadata:update')")
     public ApiResponse<MetadataField> update(@PathVariable Long id, @RequestBody MetadataField field) {
         return ApiResponse.success(metadataFieldService.update(id, field));
     }
 
     @DeleteMapping("/fields/{id}")
-    @PreAuthorize("hasAuthority('ROLE_metadata:update')")
+    @PreAuthorize("hasAuthority('metadata:update')")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         metadataFieldService.delete(id);
         return ApiResponse.success();
     }
 
     @GetMapping("/groups")
-    @PreAuthorize("hasAuthority('ROLE_metadata:list')")
+    @PreAuthorize("hasAuthority('metadata:list')")
     public ApiResponse<List<String>> groupsAlias() {
         return ApiResponse.success(metadataFieldService.getGroups());
     }
 
     @GetMapping("/fields/groups")
-    @PreAuthorize("hasAuthority('ROLE_metadata:list')")
+    @PreAuthorize("hasAuthority('metadata:list')")
     public ApiResponse<List<String>> groups() {
         return ApiResponse.success(metadataFieldService.getGroups());
     }
 
     @GetMapping("/fields/by-group/{groupCode}")
-    @PreAuthorize("hasAuthority('ROLE_metadata:export')")
+    @PreAuthorize("hasAuthority('metadata:export')")
     public ApiResponse<List<MetadataField>> byGroup(@PathVariable String groupCode) {
         return ApiResponse.success(metadataFieldService.getByGroupCode(groupCode));
     }
@@ -107,7 +107,7 @@ public class MetadataController {
     // ── Export ──────────────────────────────────────────
 
     @PostMapping("/export")
-    @PreAuthorize("hasAuthority('ROLE_metadata:export')")
+    @PreAuthorize("hasAuthority('metadata:export')")
     public ApiResponse<Map<String, Object>> exportData(@RequestBody Map<String, Object> body) {
         String format = (String) body.getOrDefault("format", "JSON");
         @SuppressWarnings("unchecked")
@@ -127,7 +127,7 @@ public class MetadataController {
     }
 
     @GetMapping("/export/history")
-    @PreAuthorize("hasAuthority('ROLE_metadata:export')")
+    @PreAuthorize("hasAuthority('metadata:export')")
     public ApiResponse<List<Map<String, Object>>> exportHistory() {
         List<ExportHistory> list = exportHistoryMapper.selectList(
                 new LambdaQueryWrapper<ExportHistory>().orderByDesc(ExportHistory::getCreatedAt));
@@ -148,7 +148,7 @@ public class MetadataController {
     // ── Webhook Config ──────────────────────────────────
 
     @GetMapping("/export/webhook")
-    @PreAuthorize("hasAuthority('ROLE_metadata:export')")
+    @PreAuthorize("hasAuthority('metadata:export')")
     public ApiResponse<Map<String, Object>> getWebhook() {
         WebhookConfig config = webhookConfigMapper.selectOne(
                 new LambdaQueryWrapper<WebhookConfig>().last("LIMIT 1"));
@@ -170,7 +170,7 @@ public class MetadataController {
     }
 
     @PutMapping("/export/webhook")
-    @PreAuthorize("hasAuthority('ROLE_metadata:export')")
+    @PreAuthorize("hasAuthority('metadata:export')")
     public ApiResponse<Map<String, Object>> updateWebhook(@RequestBody Map<String, Object> body) {
         WebhookConfig config = webhookConfigMapper.selectOne(
                 new LambdaQueryWrapper<WebhookConfig>().last("LIMIT 1"));
