@@ -74,9 +74,7 @@ public class AuthService {
                 .email(user.getEmail())
                 .avatar(user.getAvatar())
                 .roles(roleCodes)
-                .permissions(new ArrayList<>(authoritySet).stream()
-                        .map(s -> s.replace("ROLE_", ""))
-                        .collect(Collectors.toList()))
+                .permissions(new ArrayList<>(authoritySet))
                 .build();
 
         return LoginResponse.builder()
@@ -126,9 +124,7 @@ public class AuthService {
                 .email(user.getEmail())
                 .avatar(user.getAvatar())
                 .roles(roleCodes)
-                .permissions(new ArrayList<>(authoritySet).stream()
-                        .map(s -> s.replace("ROLE_", ""))
-                        .collect(Collectors.toList()))
+                .permissions(new ArrayList<>(authoritySet))
                 .build();
 
         return LoginResponse.builder()
@@ -148,7 +144,7 @@ public class AuthService {
         if (roleCodes.contains("admin")) {
             List<Permission> allPermissions = permissionMapper.selectList(null);
             authorities.addAll(allPermissions.stream()
-                    .map(p -> "ROLE_" + p.getCode())
+                    .map(p -> p.getCode())
                     .collect(Collectors.toSet()));
         } else if (!roleIds.isEmpty()) {
             List<RolePermission> rolePermissions = rolePermissionMapper.selectList(
@@ -158,7 +154,7 @@ public class AuthService {
             if (!permissionIds.isEmpty()) {
                 List<Permission> permissions = permissionMapper.selectBatchIds(permissionIds);
                 authorities.addAll(permissions.stream()
-                        .map(p -> "ROLE_" + p.getCode())
+                        .map(p -> p.getCode())
                         .collect(Collectors.toSet()));
             }
         }

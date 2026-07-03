@@ -24,7 +24,7 @@ public class AgentTraceController {
     private final AgentTraceNodeMapper agentTraceNodeMapper;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('ROLE_log:agent')")
+    @PreAuthorize("hasAuthority('log:agent')")
     public ApiResponse<PageResult<Map<String, Object>>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
@@ -66,7 +66,7 @@ public class AgentTraceController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_log:agent')")
+    @PreAuthorize("hasAuthority('log:agent')")
     public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
         AgentTrace trace = agentTraceMapper.selectById(id);
         if (trace == null) {
