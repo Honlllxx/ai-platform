@@ -24,6 +24,12 @@ public class PermissionController {
         return ApiResponse.success(permissionService.getTree());
     }
 
+    @GetMapping("/tree")
+    @PreAuthorize("hasAuthority('ROLE_permission:list')")
+    public ApiResponse<List<Map<String, Object>>> treeEndpoint() {
+        return ApiResponse.success(permissionService.getTree());
+    }
+
     @GetMapping("/flat")
     @PreAuthorize("hasAuthority('ROLE_permission:list')")
     public ApiResponse<List<Map<String, Object>>> flat() {
