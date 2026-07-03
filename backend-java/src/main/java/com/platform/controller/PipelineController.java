@@ -4,10 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.platform.dto.ApiResponse;
 import com.platform.dto.PageResult;
+import com.platform.entity.document.Document;
 import com.platform.entity.pipeline.ExtractionResult;
 import com.platform.entity.pipeline.Pipeline;
 import com.platform.entity.pipeline.ReflectionResult;
 import com.platform.entity.pipeline.ValidationResult;
+import com.platform.mapper.document.DocumentMapper;
 import com.platform.mapper.pipeline.ExtractionResultMapper;
 import com.platform.mapper.pipeline.PipelineMapper;
 import com.platform.mapper.pipeline.ReflectionResultMapper;
@@ -28,9 +30,10 @@ public class PipelineController {
     private final ExtractionResultMapper extractionResultMapper;
     private final ValidationResultMapper validationResultMapper;
     private final ReflectionResultMapper reflectionResultMapper;
+    private final DocumentMapper documentMapper;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('ROLE_pipeline:list')")
+    @PreAuthorize("hasAuthority('pipeline:list')")
     public ApiResponse<PageResult<Map<String, Object>>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
@@ -44,19 +47,32 @@ public class PipelineController {
 
         Page<Pipeline> pipelinePage = pipelineMapper.selectPage(new Page<>(page, pageSize), wrapper);
 
+        // Batch fetch document names
+        Set<Long> docIds = pipelinePage.getRecords().stream()
+                .map(Pipeline::getDocumentId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> docNameMap = new HashMap<>();
+        if (!docIds.isEmpty()) {
+            List<Document> docs = documentMapper.selectBatchIds(docIds);
+            docNameMap = docs.stream().collect(Collectors.toMap(Document::getId, Document::getFileName));
+        }
+
+        Map<Long, String> finalDocNameMap = docNameMap;
         List<Map<String, Object>> records = pipelinePage.getRecords().stream().map(p -> {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("id", p.getId());
             map.put("documentId", p.getDocumentId());
+            map.put("documentName", finalDocNameMap.getOrDefault(p.getDocumentId(), ""));
             map.put("taskId", p.getTaskId());
             map.put("status", p.getStatus());
             map.put("currentStep", p.getCurrentStep());
             map.put("totalSteps", p.getTotalSteps());
             map.put("completedSteps", p.getCompletedSteps());
             map.put("duration", p.getDuration());
-            map.put("errorMessage", p.getErrorMessage());
-            map.put("startedAt", p.getStartedAt());
-            map.put("finishedAt", p.getFinishedAt());
+            map.put("error", p.getErrorMessage());
+            map.put("startTime", p.getStartedAt());
+            map.put("endTime", p.getFinishedAt());
             map.put("createTime", p.getCreatedAt());
             map.put("updateTime", p.getUpdatedAt());
             return map;
@@ -67,7 +83,7 @@ public class PipelineController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_pipeline:list')")
+    @PreAuthorize("hasAuthority('pipeline:list')")
     public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
         Pipeline p = pipelineMapper.selectById(id);
         if (p == null) {
@@ -84,11 +100,19 @@ public class PipelineController {
         map.put("completedSteps", p.getCompletedSteps());
         map.put("duration", p.getDuration());
         map.put("stateGraph", p.getStateGraph());
-        map.put("errorMessage", p.getErrorMessage());
-        map.put("startedAt", p.getStartedAt());
-        map.put("finishedAt", p.getFinishedAt());
+        map.put("error", p.getErrorMessage());
+        map.put("startTime", p.getStartedAt());
+        map.put("endTime", p.getFinishedAt());
         map.put("createTime", p.getCreatedAt());
         map.put("updateTime", p.getUpdatedAt());
+
+        // Document name
+        if (p.getDocumentId() != null) {
+            Document doc = documentMapper.selectById(p.getDocumentId());
+            map.put("documentName", doc != null ? doc.getFileName() : "");
+        } else {
+            map.put("documentName", "");
+        }
 
         // Extraction results
         List<ExtractionResult> extractions = extractionResultMapper.selectList(
