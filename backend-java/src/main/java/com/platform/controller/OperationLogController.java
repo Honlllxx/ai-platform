@@ -9,9 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -57,5 +55,44 @@ public class OperationLogController {
     @PreAuthorize("hasAuthority('ROLE_log:operation')")
     public ApiResponse<OperationLog> detail(@PathVariable Long id) {
         return ApiResponse.success(operationLogService.getById(id));
+    }
+
+    @GetMapping("/export")
+    @PreAuthorize("hasAuthority('ROLE_log:operation')")
+    public ApiResponse<List<Map<String, Object>>> exportLogs(
+            @RequestParam(required = false) String operationType,
+            @RequestParam(required = false) String module) {
+        // Stub: return recent 100 logs
+        Page<OperationLog> logPage = operationLogService.pageQuery(1, 100, operationType, module, null);
+        List<Map<String, Object>> records = logPage.getRecords().stream().map(log -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", log.getId());
+            map.put("userId", log.getUserId());
+            map.put("username", log.getUsername());
+            map.put("operationType", log.getOperationType());
+            map.put("module", log.getModule());
+            map.put("description", log.getDescription());
+            map.put("status", log.getStatus());
+            map.put("createTime", log.getCreatedAt());
+            return map;
+        }).collect(Collectors.toList());
+        return ApiResponse.success(records);
+    }
+
+    @GetMapping("/types")
+    @PreAuthorize("hasAuthority('ROLE_log:operation')")
+    public ApiResponse<List<Map<String, String>>> types() {
+        List<Map<String, String>> list = Arrays.asList(
+            Map.of("value", "login", "label", "登录"),
+            Map.of("value", "logout", "label", "登出"),
+            Map.of("value", "query", "label", "查询"),
+            Map.of("value", "create", "label", "创建"),
+            Map.of("value", "update", "label", "更新"),
+            Map.of("value", "delete", "label", "删除"),
+            Map.of("value", "export", "label", "导出"),
+            Map.of("value", "grant", "label", "授权"),
+            Map.of("value", "other", "label", "其他")
+        );
+        return ApiResponse.success(list);
     }
 }
