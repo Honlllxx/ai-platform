@@ -40,6 +40,12 @@ public class RoleController {
         return ApiResponse.success(records);
     }
 
+    @GetMapping("/all")
+    @PreAuthorize("hasAuthority('ROLE_role:list')")
+    public ApiResponse<List<Role>> all() {
+        return ApiResponse.success(roleService.listAll());
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_role:list')")
     public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
@@ -80,6 +86,15 @@ public class RoleController {
     @PreAuthorize("hasAuthority('ROLE_role:update')")
     public ApiResponse<Void> updateStatus(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
         roleService.updateStatus(id, body.get("status"));
+        return ApiResponse.success();
+    }
+
+    @PostMapping("/{roleId}/permissions")
+    @PreAuthorize("hasAuthority('ROLE_role:update')")
+    public ApiResponse<Void> assignPermissions(@PathVariable Long roleId, @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Integer> permissionIds = (List<Integer>) body.getOrDefault("permissionIds", java.util.Collections.emptyList());
+        roleService.updateRolePermissions(roleId, permissionIds.stream().map(Long::valueOf).collect(java.util.stream.Collectors.toList()));
         return ApiResponse.success();
     }
 }
