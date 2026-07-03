@@ -30,10 +30,10 @@ public class DocumentService {
 
     private static final long MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
-    public Page<Document> pageQuery(int page, int pageSize, String fileName, String fileType, String status) {
+    public Page<Document> pageQuery(int page, int pageSize, String keyword, String fileType, String status) {
         LambdaQueryWrapper<Document> wrapper = new LambdaQueryWrapper<>();
-        if (fileName != null && !fileName.isBlank()) {
-            wrapper.like(Document::getFileName, fileName);
+        if (keyword != null && !keyword.isBlank()) {
+            wrapper.like(Document::getFileName, keyword);
         }
         if (fileType != null && !fileType.isBlank()) {
             wrapper.eq(Document::getFileType, fileType);
