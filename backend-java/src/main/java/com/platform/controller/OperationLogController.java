@@ -20,7 +20,7 @@ public class OperationLogController {
     private final OperationLogService operationLogService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('ROLE_log:operation')")
+    @PreAuthorize("hasAuthority('log:operation')")
     public ApiResponse<PageResult<Map<String, Object>>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
@@ -52,13 +52,13 @@ public class OperationLogController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_log:operation')")
+    @PreAuthorize("hasAuthority('log:operation')")
     public ApiResponse<OperationLog> detail(@PathVariable Long id) {
         return ApiResponse.success(operationLogService.getById(id));
     }
 
     @GetMapping("/export")
-    @PreAuthorize("hasAuthority('ROLE_log:operation')")
+    @PreAuthorize("hasAuthority('log:operation')")
     public ApiResponse<List<Map<String, Object>>> exportLogs(
             @RequestParam(required = false) String operationType,
             @RequestParam(required = false) String module) {
@@ -80,7 +80,7 @@ public class OperationLogController {
     }
 
     @GetMapping("/types")
-    @PreAuthorize("hasAuthority('ROLE_log:operation')")
+    @PreAuthorize("hasAuthority('log:operation')")
     public ApiResponse<List<Map<String, String>>> types() {
         List<Map<String, String>> list = Arrays.asList(
             Map.of("value", "login", "label", "登录"),
