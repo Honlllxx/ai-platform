@@ -22,7 +22,7 @@ public class TemplateController {
     private final TemplateService templateService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('ROLE_template:list')")
+    @PreAuthorize("hasAuthority('template:list')")
     public ApiResponse<PageResult<Map<String, Object>>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
@@ -51,7 +51,7 @@ public class TemplateController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_template:list')")
+    @PreAuthorize("hasAuthority('template:list')")
     public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
         Template t = templateService.getById(id);
         Map<String, Object> map = new HashMap<>();
@@ -68,19 +68,19 @@ public class TemplateController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('ROLE_template:list')")
+    @PreAuthorize("hasAuthority('template:list')")
     public ApiResponse<Template> create(@RequestBody Template template) {
         return ApiResponse.success(templateService.create(template));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_template:list')")
+    @PreAuthorize("hasAuthority('template:list')")
     public ApiResponse<Template> update(@PathVariable Long id, @RequestBody Template template) {
         return ApiResponse.success(templateService.update(id, template));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_template:list')")
+    @PreAuthorize("hasAuthority('template:list')")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         templateService.delete(id);
         return ApiResponse.success();
