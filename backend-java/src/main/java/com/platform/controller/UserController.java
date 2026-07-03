@@ -27,7 +27,7 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('ROLE_user:list')")
+    @PreAuthorize("hasAuthority('user:list')")
     public ApiResponse<PageResult<Map<String, Object>>> list(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
@@ -59,7 +59,7 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_user:list')")
+    @PreAuthorize("hasAuthority('user:list')")
     public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
         User user = userService.getById(id);
         List<Role> roles = userService.getUserRoles(id);
@@ -80,42 +80,42 @@ public class UserController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('ROLE_user:create')")
+    @PreAuthorize("hasAuthority('user:create')")
     public ApiResponse<User> create(@Valid @RequestBody CreateUserRequest request) {
         User user = userService.createUser(request);
         return ApiResponse.success(user);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_user:update')")
+    @PreAuthorize("hasAuthority('user:update')")
     public ApiResponse<User> update(@PathVariable Long id, @RequestBody UpdateUserRequest request) {
         User user = userService.updateUser(id, request);
         return ApiResponse.success(user);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_user:delete')")
+    @PreAuthorize("hasAuthority('user:delete')")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         userService.deleteUser(id);
         return ApiResponse.success();
     }
 
-    @PutMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('ROLE_user:update')")
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('user:update')")
     public ApiResponse<Void> updateStatus(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
         userService.updateStatus(id, body.get("status"));
         return ApiResponse.success();
     }
 
     @PutMapping("/{id}/reset-password")
-    @PreAuthorize("hasAuthority('ROLE_user:update')")
+    @PreAuthorize("hasAuthority('user:update')")
     public ApiResponse<Void> resetPassword(@PathVariable Long id, @Valid @RequestBody ResetPasswordRequest request) {
         userService.resetPassword(id, request);
         return ApiResponse.success();
     }
 
     @PostMapping("/{userId}/roles")
-    @PreAuthorize("hasAuthority('ROLE_user:update')")
+    @PreAuthorize("hasAuthority('user:update')")
     public ApiResponse<Void> assignRoles(@PathVariable Long userId, @RequestBody Map<String, Object> body) {
         @SuppressWarnings("unchecked")
         List<Integer> roleIds = (List<Integer>) body.getOrDefault("roleIds", java.util.Collections.emptyList());
