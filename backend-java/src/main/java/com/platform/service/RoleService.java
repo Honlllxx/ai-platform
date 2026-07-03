@@ -123,4 +123,18 @@ public class RoleService {
             rolePermissionMapper.insert(rp);
         }
     }
+
+    public void updateRolePermissions(Long roleId, List<Long> permissionIds) {
+        // Delete old permissions
+        rolePermissionMapper.delete(new LambdaQueryWrapper<RolePermission>().eq(RolePermission::getRoleId, roleId));
+        // Insert new permissions
+        if (permissionIds != null && !permissionIds.isEmpty()) {
+            for (Long permId : permissionIds) {
+                RolePermission rp = new RolePermission();
+                rp.setRoleId(roleId);
+                rp.setPermissionId(permId);
+                rolePermissionMapper.insert(rp);
+            }
+        }
+    }
 }
