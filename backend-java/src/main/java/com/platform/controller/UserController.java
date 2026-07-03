@@ -113,4 +113,13 @@ public class UserController {
         userService.resetPassword(id, request);
         return ApiResponse.success();
     }
+
+    @PostMapping("/{userId}/roles")
+    @PreAuthorize("hasAuthority('ROLE_user:update')")
+    public ApiResponse<Void> assignRoles(@PathVariable Long userId, @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Integer> roleIds = (List<Integer>) body.getOrDefault("roleIds", java.util.Collections.emptyList());
+        userService.updateUserRoles(userId, roleIds.stream().map(Long::valueOf).collect(java.util.stream.Collectors.toList()));
+        return ApiResponse.success();
+    }
 }

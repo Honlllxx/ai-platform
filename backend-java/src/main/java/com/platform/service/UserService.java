@@ -142,4 +142,18 @@ public class UserService {
             userRoleMapper.insert(ur);
         }
     }
+
+    public void updateUserRoles(Long userId, List<Long> roleIds) {
+        // Delete old roles
+        userRoleMapper.delete(new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
+        // Insert new roles
+        if (roleIds != null && !roleIds.isEmpty()) {
+            for (Long roleId : roleIds) {
+                UserRole ur = new UserRole();
+                ur.setUserId(userId);
+                ur.setRoleId(roleId);
+                userRoleMapper.insert(ur);
+            }
+        }
+    }
 }
