@@ -19,19 +19,19 @@ public class PermissionController {
     private final PermissionService permissionService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('ROLE_permission:list')")
+    @PreAuthorize("hasAuthority('permission:list')")
     public ApiResponse<List<Map<String, Object>>> tree() {
         return ApiResponse.success(permissionService.getTree());
     }
 
     @GetMapping("/tree")
-    @PreAuthorize("hasAuthority('ROLE_permission:list')")
+    @PreAuthorize("hasAuthority('permission:list')")
     public ApiResponse<List<Map<String, Object>>> treeEndpoint() {
         return ApiResponse.success(permissionService.getTree());
     }
 
     @GetMapping("/flat")
-    @PreAuthorize("hasAuthority('ROLE_permission:list')")
+    @PreAuthorize("hasAuthority('permission:list')")
     public ApiResponse<List<Map<String, Object>>> flat() {
         List<Permission> list = permissionService.listAll();
         List<Map<String, Object>> records = list.stream().map(p -> {
@@ -52,25 +52,25 @@ public class PermissionController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_permission:list')")
+    @PreAuthorize("hasAuthority('permission:list')")
     public ApiResponse<Permission> detail(@PathVariable Long id) {
         return ApiResponse.success(permissionService.getById(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('ROLE_permission:create')")
+    @PreAuthorize("hasAuthority('permission:create')")
     public ApiResponse<Permission> create(@RequestBody Permission permission) {
         return ApiResponse.success(permissionService.create(permission));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_permission:update')")
+    @PreAuthorize("hasAuthority('permission:update')")
     public ApiResponse<Permission> update(@PathVariable Long id, @RequestBody Permission permission) {
         return ApiResponse.success(permissionService.update(id, permission));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_permission:delete')")
+    @PreAuthorize("hasAuthority('permission:delete')")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         permissionService.delete(id);
         return ApiResponse.success();
