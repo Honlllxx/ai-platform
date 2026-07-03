@@ -4,9 +4,6 @@
 -- ============================================================
 
 
-create database biz_form_recog_db;
-use biz_form_recog_db;
-
 
 -- 先清空所有表（按依赖顺序）
 DROP TABLE IF EXISTS webhook_config CASCADE;
