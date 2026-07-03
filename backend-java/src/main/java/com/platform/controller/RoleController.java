@@ -22,7 +22,7 @@ public class RoleController {
     private final RoleService roleService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('ROLE_role:list')")
+    @PreAuthorize("hasAuthority('role:list')")
     public ApiResponse<List<Map<String, Object>>> list() {
         List<Role> roles = roleService.listAll();
         List<Map<String, Object>> records = roles.stream().map(role -> {
@@ -41,13 +41,13 @@ public class RoleController {
     }
 
     @GetMapping("/all")
-    @PreAuthorize("hasAuthority('ROLE_role:list')")
+    @PreAuthorize("hasAuthority('role:list')")
     public ApiResponse<List<Role>> all() {
         return ApiResponse.success(roleService.listAll());
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_role:list')")
+    @PreAuthorize("hasAuthority('role:list')")
     public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
         Role role = roleService.getById(id);
         Map<String, Object> map = new HashMap<>();
@@ -62,35 +62,35 @@ public class RoleController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('ROLE_role:create')")
+    @PreAuthorize("hasAuthority('role:create')")
     public ApiResponse<Role> create(@Valid @RequestBody CreateRoleRequest request) {
         Role role = roleService.createRole(request);
         return ApiResponse.success(role);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_role:update')")
+    @PreAuthorize("hasAuthority('role:update')")
     public ApiResponse<Role> update(@PathVariable Long id, @RequestBody UpdateRoleRequest request) {
         Role role = roleService.updateRole(id, request);
         return ApiResponse.success(role);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_role:delete')")
+    @PreAuthorize("hasAuthority('role:delete')")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         roleService.deleteRole(id);
         return ApiResponse.success();
     }
 
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('ROLE_role:update')")
+    @PreAuthorize("hasAuthority('role:update')")
     public ApiResponse<Void> updateStatus(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
         roleService.updateStatus(id, body.get("status"));
         return ApiResponse.success();
     }
 
     @PostMapping("/{roleId}/permissions")
-    @PreAuthorize("hasAuthority('ROLE_role:update')")
+    @PreAuthorize("hasAuthority('role:update')")
     public ApiResponse<Void> assignPermissions(@PathVariable Long roleId, @RequestBody Map<String, Object> body) {
         @SuppressWarnings("unchecked")
         List<Integer> permissionIds = (List<Integer>) body.getOrDefault("permissionIds", java.util.Collections.emptyList());
