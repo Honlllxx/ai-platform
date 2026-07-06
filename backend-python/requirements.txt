@@ -1,0 +1,23 @@
+# FastAPI Web Framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.19
+
+# Configuration
+pydantic-settings==2.7.1
+
+# Database (read-only PostgreSQL)
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+
+# Image Processing
+opencv-python-headless==4.11.0.86
+Pillow==11.1.0
+
+# OCR
+paddleocr==2.10.0
+paddlepaddle==3.0.0
+
+# LLM Client (async HTTP)
+httpx==0.28.1
+
