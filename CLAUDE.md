@@ -1,6 +1,6 @@
 # AI Platform — 全栈开发文档
 
-> 最后更新: 2026-07-07 | Phase 15 完成 | LangGraph + RocketMQ | 状态图管线 + 异步消息
+> 最后更新: 2026-07-07 | Phase 16 完成 | Nginx 网关 + 双向 RocketMQ | 架构对齐 ✅
 
 ---
 
@@ -555,14 +555,15 @@ Reflection: 1 low-confidence field examined
 
 #### RocketMQ 异步消息
 
-**架构**: `Document上传 → Java Producer → RocketMQ Topic → Java Consumer → Python AI → DB 持久化`
+**Phase 15 (原)**: Java Producer → RocketMQ → Java Consumer → Python REST API
+**Phase 16 (升级)**: Java Producer → RocketMQ → **Python Consumer** (LangGraph 管线) → **Python Producer** → RocketMQ → **Java Consumer** (状态更新)
 
 | 组件 | 文件 | 说明 |
 |------|------|------|
 | Broker 配置 | `rocketmq/broker.conf` | autoCreateTopic + 存储配置 |
 | 消息 DTO | `dto/PipelineTaskMessage.java` | documentId, taskId, fileUrl, metadata |
-| Producer | `RocketMQProducerService.java` | RocketMQTemplate 同步发送至 `pipeline-task` topic |
-| Consumer | `PipelineTaskConsumer.java` | @RocketMQMessageListener 异步消费，调用 Python AI |
+| Java Producer | `RocketMQProducerService.java` | RocketMQTemplate 同步发送至 `pipeline-task` topic |
+| Java Consumer (fallback) | `PipelineTaskConsumer.java` | @RocketMQMessageListener fallback 组，HTTP 桥接备用 |
 | 异步上传 | `POST /api/documents/{id}/pipeline` | 文档上传后入队，立即返回 taskId |
 | 异步管线 | `POST /api/pipeline/run-async` | 流水线任务入队，立即返回 taskId |
 
@@ -584,6 +585,44 @@ PipelineTaskConsumer.onMessage()
 - 新建 1 配置: `rocketmq/broker.conf`
 - 修改 4 Java: DocumentController, PipelineController, docker-compose.yml, requirements.txt
 - 修改 1 Python: `routers/ai.py`
+
+---
+
+### Phase 16 — Nginx 网关 + 双向 RocketMQ（已完成 ✅）
+
+#### Nginx 网关 (:80)
+
+- 创建 `nginx/nginx.conf` — 按路径前缀分流
+- `/api/ai/*`, `/api/prompt/*`, `/api/finetune/*`, `/api/models/*` → Python :8000
+- 其余 `/api/*` → Java :8080
+- 更新 `docker-compose.yml` 添加 nginx 服务
+- 更新 `vite.config.ts` — 开发环境同样按路径代理
+
+#### RocketMQ 双向通信
+
+| 方向 | 组件 | Topic | 说明 |
+|------|------|-------|------|
+| Java → Python | `RocketMQProducerService` (Java) → `rocketmq_consumer.py` (Python) | `pipeline-task` | 发送 AI 处理请求 |
+| Python → Java | `rocketmq_producer.py` (Python) → `PipelineResultConsumer.java` (Java) | `pipeline-result` | 回写处理结果 |
+
+**Python 侧新增**:
+- `app/services/rocketmq_consumer.py` — PushConsumer，监听 `pipeline-task`，下载 MinIO 文件 → LangGraph 管线 → DB 持久化
+- `app/services/rocketmq_producer.py` — Producer，发送 `pipeline-result` 到 Java
+- `app/config.py` — 新增 MinIO + RocketMQ 配置项
+- `app/main.py` — lifespan 启动/停止 consumer
+- `requirements.txt` — 新增 `minio==7.2.10`
+
+**Java 侧新增**:
+- `dto/PipelineResultMessage.java` — 结果消息 DTO (taskId, documentId, pipelineId, status, duration, errorMessage)
+- `service/PipelineResultConsumer.java` — 消费 `pipeline-result`，更新 Document/Pipeline 状态
+- `PipelineTaskConsumer.java` — 改为 fallback 消费者组 (`platform-consumer-group-fallback`)，Python 优先
+
+**前端**:
+- `vite.config.ts` — 4 条 AI 路径代理到 Python :8000
+
+**Phase 16 新增/修改文件（12 个）**:
+- 新建 5: `nginx/nginx.conf`, `rocketmq_consumer.py`, `rocketmq_producer.py`, `PipelineResultMessage.java`, `PipelineResultConsumer.java`
+- 修改 7: `docker-compose.yml`, `vite.config.ts`, `config.py`, `main.py`, `requirements.txt`, `PipelineTaskConsumer.java`, `application-dev.yml`
 
 ---
 
