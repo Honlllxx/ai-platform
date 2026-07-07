@@ -14,22 +14,17 @@ class TableService:
     def engine(self):
         """Lazy-load PaddleOCR table engine."""
         if self._engine is None:
-            from paddleocr import PPStructure
+            from paddleocr import PPStructureV3
             from app.config import get_settings
             settings = get_settings()
-            self._engine = PPStructure(
+            self._engine = PPStructureV3(
                 lang=settings.ocr_lang,
-                use_gpu=settings.ocr_use_gpu,
-                show_log=False,
-                recovery=True,
-                layout=False,
-                table=True,
             )
         return self._engine
 
     def extract_tables(self, image: np.ndarray) -> list[dict]:
         """Extract tables from image. Returns structured table data."""
-        result = self.engine(image)
+        result = self.engine.predict(image, use_table_recognition=True)
 
         tables = []
         for block in result:
