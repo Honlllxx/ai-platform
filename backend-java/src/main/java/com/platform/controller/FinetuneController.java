@@ -1,11 +1,10 @@
 package com.platform.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.platform.dto.ApiResponse;
 import com.platform.dto.PageResult;
 import com.platform.entity.ai.FinetuneTask;
-import com.platform.mapper.ai.FinetuneTaskMapper;
+import com.platform.service.FinetuneService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -18,7 +17,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FinetuneController {
 
-    private final FinetuneTaskMapper finetuneTaskMapper;
+    private final FinetuneService finetuneService;
 
     @GetMapping("/tasks")
     @PreAuthorize("hasAuthority('finetune:list')")
@@ -27,12 +26,7 @@ public class FinetuneController {
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String status) {
 
-        LambdaQueryWrapper<FinetuneTask> wrapper = new LambdaQueryWrapper<>();
-        if (status != null && !status.isBlank()) {
-            wrapper.eq(FinetuneTask::getStatus, status);
-        }
-        wrapper.orderByDesc(FinetuneTask::getCreatedAt);
-        Page<FinetuneTask> taskPage = finetuneTaskMapper.selectPage(new Page<>(page, pageSize), wrapper);
+        Page<FinetuneTask> taskPage = finetuneService.pageQuery(page, pageSize, status);
 
         List<Map<String, Object>> records = taskPage.getRecords().stream().map(t -> {
             Map<String, Object> map = new LinkedHashMap<>();
@@ -65,7 +59,7 @@ public class FinetuneController {
     @GetMapping("/tasks/{id}")
     @PreAuthorize("hasAuthority('finetune:list')")
     public ApiResponse<Map<String, Object>> taskDetail(@PathVariable Long id) {
-        FinetuneTask t = finetuneTaskMapper.selectById(id);
+        FinetuneTask t = finetuneService.getById(id);
         if (t == null) return ApiResponse.success(null);
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", t.getId());
@@ -93,31 +87,14 @@ public class FinetuneController {
     @PostMapping("/tasks")
     @PreAuthorize("hasAuthority('finetune:list')")
     public ApiResponse<Map<String, Object>> createTask(@RequestBody Map<String, Object> body) {
-        FinetuneTask t = new FinetuneTask();
-        t.setTaskName((String) body.get("taskName"));
-        t.setBaseModel((String) body.get("baseModel"));
-        t.setDatasetName((String) body.get("datasetName"));
-        t.setDatasetSize(body.get("datasetSize") != null
-                ? ((Number) body.get("datasetSize")).intValue() : 0);
-        t.setEpochs(body.get("epochs") != null
-                ? ((Number) body.get("epochs")).intValue() : 3);
-        t.setLearningRate(body.get("learningRate") != null
-                ? ((Number) body.get("learningRate")).doubleValue() : 0.001);
-        t.setStatus("pending");
-        t.setProgress(0);
-        t.setCurrentEpoch(0);
-        finetuneTaskMapper.insert(t);
+        FinetuneTask t = finetuneService.createTask(body);
         return ApiResponse.success(Map.of("id", t.getId(), "status", t.getStatus()));
     }
 
     @DeleteMapping("/tasks/{id}")
     @PreAuthorize("hasAuthority('finetune:list')")
     public ApiResponse<Void> cancelTask(@PathVariable Long id) {
-        FinetuneTask t = finetuneTaskMapper.selectById(id);
-        if (t != null) {
-            t.setStatus("cancelled");
-            finetuneTaskMapper.updateById(t);
-        }
+        finetuneService.cancelTask(id);
         return ApiResponse.success();
     }
 }
