@@ -1,18 +1,46 @@
 import os
+import logging
 # Disable ONEDNN/MKLDNN to avoid PaddlePaddle 3.0 CPU PIR compatibility issues
 os.environ["FLAGS_use_onednn"] = "0"
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 settings = get_settings()
+
+
+# ── Lifespan: start/stop RocketMQ consumer ──────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start RocketMQ consumer on startup, shut down on exit."""
+    logger.info("Starting RocketMQ consumer...")
+    try:
+        from app.services.rocketmq_consumer import rocketmq_consumer
+        rocketmq_consumer.start()
+        logger.info("RocketMQ consumer started successfully")
+    except Exception as e:
+        logger.warning("RocketMQ consumer not started (MQ may be unavailable): %s", e)
+    yield
+    logger.info("Shutting down RocketMQ consumer...")
+    try:
+        from app.services.rocketmq_consumer import rocketmq_consumer
+        rocketmq_consumer.stop()
+    except Exception:
+        pass
+
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # CORS — allow frontend dev server
