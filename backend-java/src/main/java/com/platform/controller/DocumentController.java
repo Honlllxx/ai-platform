@@ -13,6 +13,7 @@ import com.platform.mapper.document.DocumentMapper;
 import com.platform.mapper.document.DocumentOcrMapper;
 import com.platform.mapper.document.DocumentTableMapper;
 import com.platform.security.JwtTokenProvider;
+import com.platform.service.AiPipelineService;
 import com.platform.service.DocumentService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,7 @@ public class DocumentController {
     private final DocumentLayoutMapper documentLayoutMapper;
     private final DocumentOcrMapper documentOcrMapper;
     private final DocumentTableMapper documentTableMapper;
+    private final AiPipelineService aiPipelineService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('document:list')")
@@ -183,15 +185,8 @@ public class DocumentController {
     @PostMapping("/{id}/preprocess")
     @PreAuthorize("hasAuthority('document:list')")
     public ApiResponse<Map<String, Object>> preprocess(@PathVariable Long id) {
-        Document doc = documentService.getById(id);
-        doc.setStatus("pending");
-        documentMapper.updateById(doc);
-
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("id", id);
-        map.put("status", "pending");
-        map.put("message", "预处理已提交（当前为桩实现，待对接 Python AI 服务）");
-        return ApiResponse.success(map);
+        Map<String, Object> result = aiPipelineService.preprocessDocument(id);
+        return ApiResponse.success(result);
     }
 
     private String extractToken(HttpServletRequest request) {
