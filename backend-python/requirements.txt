@@ -28,3 +28,6 @@ langgraph==0.2.60
 # RocketMQ Client (pure Python, lightweight)
 rocketmq-client-python==2.0.0
 
+# MinIO Client — file download for RocketMQ consumer
+minio==7.2.10
+
