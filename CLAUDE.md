@@ -1,6 +1,6 @@
 # AI Platform — 全栈开发文档
 
-> 最后更新: 2026-07-04 | Phase 9 集成测试通过 | 15 Controller ~100 端点
+> 最后更新: 2026-07-07 | Phase 10 完成 | MinIO ✅ PaddleOCR ✅ 文档上传已验证
 
 ---
 
@@ -362,15 +362,22 @@ const { data, loading, pagination, query, fetchData, handleSearch, handleReset, 
 
 ---
 
-## 十、待完成
+## 十、Phase 10 — 基础设施补齐（2026-07-07）
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| MinIO 启动 | ✅ | Docker 容器运行正常，bucket `documents` 已创建 |
+| PaddleOCR + PaddleX | ✅ | 已安装，PPStructure→PPStructureV3 API 已适配 |
+| 文档上传验证 | ✅ | 文件 → MinIO 存储 → DB 记录，全链路通过 |
+| Java Docker 配置 | ✅ | 创建 `application-prod.yml`（容器内服务名） |
+| Docker Compose 全栈 | ✅ | 新增 backend-java + backend-python 服务 |
+| 前端 Mock 关闭 | ✅ | `.env.development` 已设 `VITE_USE_MOCK=false` |
+
+### 待完成
 
 | 项 | 优先级 | 说明 |
 |----|--------|------|
-| MinIO 启动 | **高** | 文档上传依赖 |
-| PaddleOCR 安装 | 高 | `pip install -r requirements.txt` |
-| 前端 Mock 关闭测试 | 中 | `VITE_USE_MOCK=false` 全栈联调 |
 | 硅基流动 API Key 轮换 | 中 | 密钥已暴露于 git 历史 |
-| Docker Compose 全栈编排 | 中 | 含 Python AI 服务容器 |
 | LangGraph 多智能体 | 🔜 | Route → Extract → Validate → Reflect |
 | RocketMQ 异步通信 | 🔜 | 替代同步 HTTP |
 
