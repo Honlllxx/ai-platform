@@ -12,6 +12,24 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
+      // AI-related paths → Python FastAPI :8000 (must be before the catch-all /api)
+      '/api/ai': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/api/prompt': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/api/finetune': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/api/models': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      // All other business API → Java Spring Boot :8080
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true
