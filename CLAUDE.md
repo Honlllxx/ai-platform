@@ -1,6 +1,6 @@
 # AI Platform — 全栈开发文档
 
-> 最后更新: 2026-07-07 | Phase 11 完成 | Java↔Python AI 已对接 | Preprocess 全链路通过
+> 最后更新: 2026-07-07 | Phase 13 进行中 | 前端 API 对接 70% | 8 URL 修复 + 11 函数补齐 + 1 视图去桩
 
 ---
 
@@ -393,6 +393,73 @@ const { data, loading, pagination, query, fetchData, handleSearch, handleReset, 
 - 修改: `pipeline_service.py`, `ocr_service.py`, `layout_service.py`, `table_service.py`, `main.py`
 - 修改: `pipeline.py`, `document.py` (ORM JSONB 修正)
 - 修改: `Dockerfile` (Python), `requirements.txt`
+
+---
+
+### Phase 12 — Python AI 完善：提示词+校验+反思（已完成）
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| Prompt 系统集成 | ✅ | `prompt_service.py` 加载 4 个模板，安全替换变量 |
+| Validation 步骤 | ✅ | `validation_service.py` LLM 校验→写入 `validation_results` |
+| Reflection 步骤 | ✅ | `reflection_service.py` 低置信度字段二次纠正→写入 `reflection_results` |
+| Pipeline 7 阶段 | ✅ | preprocess→layout→OCR→table→extract→validate→reflect |
+| PPStructureV3 单例 | ✅ | `model_loader.py` 共享实例，layout/table 复用 |
+| DocumentTable 约束修复 | ✅ | 移除 `unique=True`（一个文档可有多个表格） |
+
+**Phase 12 新增/修改文件：**
+- 新建: `prompt_service.py`, `model_loader.py`, `validation_service.py`, `reflection_service.py`
+- 修改: `pipeline_service.py`（5→7 阶段，集成 validate+reflect）
+- 修改: `layout_service.py`, `table_service.py`（共享 model_loader）
+- 修改: `document.py`（DocumentTable 移除 unique 约束）
+
+**端到端验证结果（Test Invoice 样例）：**
+```
+Validation: 4 fields checked
+  invoice_no → passed (格式正确)
+  amount     → warning (含千分位逗号)
+  date       → passed (YYYY-MM-DD)
+  tax        → error (值为 unknown，非数字)
+
+Reflection: 1 low-confidence field examined
+  tax: "unknown" → "1250.00" (从 OCR 上下文中找到正确值)
+```
+
+**已知限制：** PaddlePaddle 3.0 + Windows CPU 的 ONEDNN 兼容性导致 PaddleOCR 3.7 初始化 segfault。Preprocess (OpenCV) 和 LLM 调用（校验/反思/提取）不受影响。Linux Docker 环境通过 `FLAGS_use_onednn=0` 预期可解决 OCR 问题。
+
+---
+
+### Phase 13 — 前端 API 对接（进行中 ⚡ 70%）
+
+#### 已完成
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| 全量探索 | ✅ | 2 Agent 并行扫描：17 mock 文件、8 breaking URL 错配、11 缺失函数 |
+| 上传进度 | ✅ | P1-3 — 移除 setInterval 模拟，改用 Axios onUploadProgress 真实进度 |
+| Dashboard API | ✅ | P1-2 — 创建 `dashboard.ts` 模块 5 端点；视图切换新模块 |
+| useTable error | ✅ | P2-3 — 新增 `error` ref + `clearError()`，表格可显示加载失败 UI |
+| API URL 错配 | ✅ | 8 个 critical 全修复：model(3), finetune(1), pipeline(3), agent-trace(1) |
+| 缺失 API 函数 | ✅ | 11 个补齐：resetPassword, updateRoleStatus, runPipeline, model CRUD(3), permission(2), metadata by-group, dashboard(2) |
+| models/assets.vue | ✅ | P0-4 去桩 — 50+ 行 mock→`getBaseModels/getModelBindings/createModelBinding` |
+
+#### 待完成
+
+| 项 | 文件 | 说明 |
+|----|------|------|
+| 去桩 | `prompt/versions.vue` | setTimeout + allMockData → `getPromptVersions/createPromptVersion` |
+| 去桩 | `prompt/evaluation.vue` | setTimeout + simulateEvalRun → `getEvaluations/runEvaluation` |
+| 去桩 | `finetune/tasks.vue` | setTimeout + allMockTasks + auto-refresh → `getFinetuneTasks` |
+| 清理 | 5 catch-fallback | template/editor, metadata/export, review/detail, dashboard, pipeline/detail |
+| 清理 | 3 render-then-fetch | LayoutView, TableView, OcrView（先渲染 mock 再请求 API） |
+
+**Phase 13 新增/修改文件：**
+- 新建: `api/dashboard.ts`
+- 修改: `api/model.ts`（3 URL + 3 函数）, `api/finetune.ts`（cancel 方法+路径）, `api/pipeline.ts`（-3 幽灵端点 +runPipeline）, `api/agent-trace.ts`（-tree）, `api/permission.ts`（+2）, `api/user.ts`（+resetPassword）, `api/role.ts`（+updateRoleStatus）, `api/metadata.ts`（+byGroup）, `api/document.ts`（+3 子资源 + 进度回调）
+- 修改: `composables/useTable.ts`（+error ref）
+- 修改: `views/document/upload.vue`（真实上传进度）
+- 修改: `views/dashboard/index.vue`（dashboard API 模块）
+- 修改: `views/models/assets.vue`（去桩→API）
 
 ---
 
