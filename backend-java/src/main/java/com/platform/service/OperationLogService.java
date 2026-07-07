@@ -37,4 +37,20 @@ public class OperationLogService {
     public OperationLog getById(Long id) {
         return operationLogMapper.selectById(id);
     }
+
+    /**
+     * Export all matching logs (up to 10000) for CSV generation.
+     */
+    public java.util.List<OperationLog> exportQuery(String operationType, String module) {
+        LambdaQueryWrapper<OperationLog> wrapper = new LambdaQueryWrapper<>();
+        if (operationType != null && !operationType.isBlank()) {
+            wrapper.eq(OperationLog::getOperationType, operationType);
+        }
+        if (module != null && !module.isBlank()) {
+            wrapper.eq(OperationLog::getModule, module);
+        }
+        wrapper.orderByDesc(OperationLog::getCreatedAt);
+        Page<OperationLog> page = operationLogMapper.selectPage(new Page<>(1, 10000), wrapper);
+        return page.getRecords();
+    }
 }
