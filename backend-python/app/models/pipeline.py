@@ -1,6 +1,7 @@
 """Pipeline-related ORM models."""
 
 from sqlalchemy import Column, BigInteger, String, Integer, Float, Text, DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -16,7 +17,7 @@ class Pipeline(Base):
     total_steps = Column(Integer, nullable=False, default=6)
     completed_steps = Column(Integer, nullable=False, default=0)
     duration = Column(Float)
-    state_graph = Column(Text)
+    state_graph = Column(JSONB)
     error_message = Column(Text)
     started_at = Column(DateTime(timezone=True))
     finished_at = Column(DateTime(timezone=True))
