@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ============================================================
   # PostgreSQL 16 — 业务数据库
@@ -17,7 +15,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-platform} -d ${POSTGRES_DB:-platform_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-biz_form_recog_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -126,6 +124,54 @@ services:
       - rocketmq_broker_data:/home/rocketmq/logs
       - rocketmq_broker_store:/home/rocketmq/store
       - ./rocketmq/broker.conf:/home/rocketmq/conf/broker.conf:ro
+    networks:
+      - platform-net
+
+  # ============================================================
+  # Java 后端 — Spring Boot 3.2
+  # ============================================================
+  backend-java:
+    build:
+      context: ./backend-java
+      dockerfile: Dockerfile
+    container_name: platform-backend-java
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    networks:
+      - platform-net
+
+  # ============================================================
+  # Python AI 服务 — FastAPI + PaddleOCR
+  # ============================================================
+  backend-python:
+    build:
+      context: ./backend-python
+      dockerfile: Dockerfile
+    container_name: platform-backend-python
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-jinjin}
+      DB_NAME: ${POSTGRES_DB:-biz_form_recog_db}
+      OCR_LANG: ch
+      OCR_USE_GPU: "false"
     networks:
       - platform-net
 
