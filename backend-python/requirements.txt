@@ -17,6 +17,7 @@ Pillow==11.1.0
 # OCR
 paddleocr==2.10.0
 paddlepaddle==3.0.0
+paddlex
 
 # LLM Client (async HTTP)
 httpx==0.28.1
