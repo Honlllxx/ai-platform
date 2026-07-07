@@ -22,3 +22,9 @@ paddlex
 # LLM Client (async HTTP)
 httpx==0.28.1
 
+# LangGraph — stateful multi-agent orchestration
+langgraph==0.2.60
+
+# RocketMQ Client (pure Python, lightweight)
+rocketmq-client-python==2.0.0
+
