@@ -17,6 +17,7 @@ from app.services.ocr_service import ocr_service
 from app.services.layout_service import layout_service
 from app.services.table_service import table_service
 from app.services.pipeline_service import pipeline_service
+from app.services.graph_service import graph_service
 
 router = APIRouter()
 
@@ -102,6 +103,34 @@ async def ai_pipeline_run(
         fields = []
 
     result = await pipeline_service.run_full_pipeline(
+        image=image,
+        metadata_fields=fields,
+        document_id=document_id,
+        db=db,
+    )
+
+    if result["status"] == "failed":
+        return ApiResponse.error(code=500, message=result.get("error", "Pipeline failed"), data=result)
+
+    return ApiResponse.success(result)
+
+
+@router.post("/pipeline/graph")
+async def ai_pipeline_graph(
+    file: UploadFile = File(...),
+    metadata_fields: str = Query(default="[]", description="JSON encoded list of field definitions"),
+    document_id: int = Query(default=None, description="Document ID for DB persistence"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run the AI pipeline using LangGraph state graph (with validate↔reflect loop)."""
+    image = await read_image_from_upload(file)
+
+    try:
+        fields = json.loads(metadata_fields)
+    except json.JSONDecodeError:
+        fields = []
+
+    result = await graph_service.run(
         image=image,
         metadata_fields=fields,
         document_id=document_id,
