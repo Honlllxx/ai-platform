@@ -95,87 +95,26 @@ function handleRegionClick(region: AnnotatorRegion) {
 }
 
 function loadLayoutData() {
-  // Simulate layout data
-  layoutRegions.value = [
-    {
-      id: 1,
-      label: '标题区域',
-      x: 5,
-      y: 3,
-      width: 90,
-      height: 6,
-      color: '#e6a23c',
-      type: 'title',
-      confidence: 0.98,
-      textPreview: '采购合同协议书'
-    },
-    {
-      id: 2,
-      label: '文本段落1',
-      x: 5,
-      y: 11,
-      width: 90,
-      height: 15,
-      color: '#409eff',
-      type: 'text',
-      confidence: 0.95,
-      textPreview: '甲方（买方）：北京科技有限公司，统一社会信用代码...'
-    },
-    {
-      id: 3,
-      label: '文本段落2',
-      x: 5,
-      y: 27,
-      width: 44,
-      height: 20,
-      color: '#409eff',
-      type: 'text',
-      confidence: 0.92,
-      textPreview: '第一条 合同标的：本合同项下买卖标的为服务器设备...'
-    },
-    {
-      id: 4,
-      label: '文本段落3',
-      x: 51,
-      y: 27,
-      width: 44,
-      height: 20,
-      color: '#409eff',
-      type: 'text',
-      confidence: 0.91,
-      textPreview: '第二条 质量标准：产品应符合国家标准GB/T...'
-    },
-    {
-      id: 5,
-      label: '报价表格',
-      x: 5,
-      y: 50,
-      width: 90,
-      height: 22,
-      color: '#67c23a',
-      type: 'table',
-      confidence: 0.97,
-      textPreview: '产品报价明细表（包含品名、规格、单价等）'
-    },
-    {
-      id: 6,
-      label: '文本段落4',
-      x: 5,
-      y: 75,
-      width: 90,
-      height: 22,
-      color: '#409eff',
-      type: 'text',
-      confidence: 0.94,
-      textPreview: '第三条 交货方式：乙方负责将货物运送至甲方指定地点...'
-    }
-  ]
-
-  // Try to fetch real data
+  // Try real API first, fall back to mock only on error
   if (props.documentId) {
-    getDocumentLayout(props.documentId).catch(() => {
-      // Use mock data
-    })
+    getDocumentLayout(props.documentId)
+      .then((res: any) => {
+        const regions = res?.data?.regions || res?.regions || res?.data || []
+        if (Array.isArray(regions) && regions.length > 0) {
+          layoutRegions.value = regions
+        }
+      })
+      .catch(() => {
+        // Mock fallback (only used when API fails or no documentId)
+        layoutRegions.value = [
+          { id: 1, label: '标题区域', x: 5, y: 3, width: 90, height: 6, color: '#e6a23c', type: 'title', confidence: 0.98, textPreview: '采购合同协议书' },
+          { id: 2, label: '文本段落1', x: 5, y: 11, width: 90, height: 15, color: '#409eff', type: 'text', confidence: 0.95, textPreview: '甲方（买方）：北京科技有限公司...' },
+          { id: 3, label: '文本段落2', x: 5, y: 27, width: 44, height: 20, color: '#409eff', type: 'text', confidence: 0.92, textPreview: '第一条 合同标的...' },
+          { id: 4, label: '文本段落3', x: 51, y: 27, width: 44, height: 20, color: '#409eff', type: 'text', confidence: 0.91, textPreview: '第二条 质量标准...' },
+          { id: 5, label: '报价表格', x: 5, y: 50, width: 90, height: 22, color: '#67c23a', type: 'table', confidence: 0.97, textPreview: '产品报价明细表' },
+          { id: 6, label: '文本段落4', x: 5, y: 75, width: 90, height: 22, color: '#409eff', type: 'text', confidence: 0.94, textPreview: '第三条 交货方式...' },
+        ]
+      })
   }
 }
 

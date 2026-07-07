@@ -172,24 +172,28 @@ function exportData() {
 }
 
 function loadTableData() {
-  // Simulate table data
-  extractionConfidence.value = 0.95
-
-  tableData.value = [
-    { cells: ['品名', '规格型号', '单位', '数量', '单价(元)', '金额(元)'] },
-    { cells: ['机架式服务器', 'Dell R750xs', '台', '4', '85,000.00', '340,000.00'] },
-    { cells: ['千兆交换机', 'Huawei S5735-L48T4XE-A-V2', '台', '6', '12,500.00', '75,000.00'] },
-    { cells: ['光纤模块', 'SFP-10G-LR-SM1310', '个', '24', '1,200.00', '28,800.00'] },
-    { cells: ['UPS 不间断电源', 'APC SMT3000RMI2U', '台', '2', '25,000.00', '50,000.00'] },
-    { cells: ['机柜', '42U 标准机柜 (600x1000)', '台', '2', '8,000.00', '16,000.00'] },
-    { cells: ['施工及调试费', '含布线、安装、调试', '项', '1', '35,000.00', '35,000.00'] }
-  ]
-
-  // Try to fetch real data
+  // Try real API first, fall back to mock only on error
   if (props.documentId) {
-    getDocumentTable(props.documentId).catch(() => {
-      // Use mock data
-    })
+    getDocumentTable(props.documentId)
+      .then((res: any) => {
+        const tables = res?.data?.tables || res?.data?.rows || res?.data
+        if (tables && (Array.isArray(tables) ? tables.length > 0 : true)) {
+          extractionConfidence.value = res?.data?.confidence || 0.95
+          tableData.value = Array.isArray(tables) ? tables : [tables]
+        }
+      })
+      .catch(() => {
+        extractionConfidence.value = 0.95
+        tableData.value = [
+          { cells: ['品名', '规格型号', '单位', '数量', '单价(元)', '金额(元)'] },
+          { cells: ['机架式服务器', 'Dell R750xs', '台', '4', '85,000.00', '340,000.00'] },
+          { cells: ['千兆交换机', 'Huawei S5735-L48T4XE-A-V2', '台', '6', '12,500.00', '75,000.00'] },
+          { cells: ['光纤模块', 'SFP-10G-LR-SM1310', '个', '24', '1,200.00', '28,800.00'] },
+          { cells: ['UPS 不间断电源', 'APC SMT3000RMI2U', '台', '2', '25,000.00', '50,000.00'] },
+          { cells: ['机柜', '42U 标准机柜 (600x1000)', '台', '2', '8,000.00', '16,000.00'] },
+          { cells: ['施工及调试费', '含布线、安装、调试', '项', '1', '35,000.00', '35,000.00'] },
+        ]
+      })
   }
 }
 

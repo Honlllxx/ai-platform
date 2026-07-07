@@ -228,6 +228,7 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, List, Loading, CircleCheck, CircleClose, VideoPause } from '@element-plus/icons-vue'
 import type { FinetuneTask } from '@/api/finetune'
+import { getFinetuneTasks, createFinetuneTask, cancelFinetuneTask } from '@/api/finetune'
 
 // ---------- Stats ----------
 const taskStats = reactive({
@@ -280,64 +281,22 @@ const loading = ref(false)
 const tableData = ref<FinetuneTask[]>([])
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
 
-// ---------- Mock Data ----------
-let taskIdCounter = 20
-
-function generateMockTasks(): FinetuneTask[] {
-  const records: FinetuneTask[] = []
-  const baseModels = ['Qwen2-7B', 'Qwen2-14B', 'Llama3-8B', 'ChatGLM3-6B', 'Baichuan2-13B']
-  const datasets = ['contract_docs_v2', 'invoice_dataset_v1', 'bol_dataset_v1', 'comprehensive_docs_v3']
-  const datasetSizes = [500, 300, 200, 800]
-
-  for (let i = 1; i <= 15; i++) {
-    const statusIdx = i % 5
-    let status: FinetuneTask['status'] = 'completed'
-    let progress = 100
-    let currentEpoch = 3
-    let loss: number | undefined = 0.0234 + Math.random() * 0.05
-    let metrics: { accuracy: number; f1: number } | undefined
-
-    if (statusIdx === 0) { status = 'running'; progress = Math.floor(Math.random() * 80) + 10; currentEpoch = progress >= 33 ? (progress >= 66 ? 2 : 1) : 0; loss = 0.8 - Math.random() * 0.4 }
-    else if (statusIdx === 1) { status = 'completed'; progress = 100; currentEpoch = 3; metrics = { accuracy: +(85 + Math.random() * 14).toFixed(1), f1: +(83 + Math.random() * 16).toFixed(1) }; loss = +(0.01 + Math.random() * 0.05).toFixed(4) }
-    else if (statusIdx === 2) { status = 'failed'; progress = Math.floor(Math.random() * 60) + 5; currentEpoch = progress >= 33 ? 1 : 0; loss = undefined }
-    else if (statusIdx === 3) { status = 'cancelled'; progress = Math.floor(Math.random() * 40) + 5; currentEpoch = 0; loss = undefined }
-    else { status = 'pending'; progress = 0; currentEpoch = 0; loss = undefined }
-
-    records.push({
-      id: i,
-      taskName: `微调任务-${String(i).padStart(2, '0')}`,
-      baseModel: baseModels[i % baseModels.length],
-      datasetName: datasets[i % datasets.length].replace(/_/g, ' ').replace(/(\w+)$/, m => m.charAt(0).toUpperCase() + m.slice(1)),
-      datasetSize: datasetSizes[i % datasets.length],
-      status,
-      progress,
-      epochs: 3,
-      currentEpoch,
-      learningRate: 1e-4,
-      loss,
-      metrics,
-      outputModelName: status === 'completed' ? `lora-${baseModels[i % baseModels.length].toLowerCase()}-v${1 + (i % 3)}` : undefined,
-      startTime: `2025-0${Math.min(9, (i % 3) + 5)}-${String((i * 3) % 28 + 1).padStart(2, '0')} ${String(9 + (i % 14)).padStart(2, '0')}:00:00`,
-      endTime: status === 'completed' ? `2025-0${Math.min(9, (i % 3) + 5)}-${String((i * 3) % 28 + 1).padStart(2, '0')} ${String(14 + (i % 10)).padStart(2, '0')}:00:00` : undefined,
-      duration: status === 'completed' ? Math.floor(Math.random() * 7200) + 1800 : 0,
-      errorMessage: status === 'failed' ? '内存不足: CUDA out of memory. Tried to allocate 2.00 GiB' : undefined,
-      createTime: `2025-0${Math.min(9, (i % 3) + 5)}-${String((i * 3) % 28 + 1).padStart(2, '0')} ${String(8 + (i % 9)).padStart(2, '0')}:30:00`
-    })
-  }
-  return records
-}
-
-const allMockTasks = generateMockTasks()
-
-function fetchData() {
+async function fetchData() {
   loading.value = true
-  setTimeout(() => {
-    computeStats(allMockTasks)
-    const start = (pagination.page - 1) * pagination.pageSize
-    tableData.value = allMockTasks.slice(start, start + pagination.pageSize)
-    pagination.total = allMockTasks.length
+  try {
+    const res = await getFinetuneTasks({ page: pagination.page, pageSize: pagination.pageSize })
+    const result = res?.data || res || {}
+    const records = (result.records || result.list || result.data || []) as FinetuneTask[]
+    tableData.value = records
+    pagination.total = result.total || 0
+    computeStats(records)
+  } catch (e: any) {
+    console.error('Failed to load finetune tasks:', e)
+    tableData.value = []
+    pagination.total = 0
+  } finally {
     loading.value = false
-  }, 200)
+  }
 }
 
 // ---------- Auto Refresh ----------
@@ -347,31 +306,7 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 function onAutoRefreshToggle(val: boolean) {
   if (val) {
     refreshTimer = setInterval(() => {
-      // Simulate progress for running tasks
-      allMockTasks.forEach(task => {
-        if (task.status === 'running') {
-          task.progress = Math.min(100, task.progress + Math.floor(Math.random() * 8) + 1)
-          task.currentEpoch = task.progress >= 33 ? (task.progress >= 66 ? 2 : 1) : 0
-          if (task.loss !== undefined) {
-            task.loss = +Math.max(0.01, task.loss - Math.random() * 0.05).toFixed(4)
-          }
-          if (task.progress >= 100) {
-            task.status = 'completed'
-            task.progress = 100
-            task.currentEpoch = 3
-            task.loss = +(0.01 + Math.random() * 0.05).toFixed(4)
-            task.metrics = {
-              accuracy: +(85 + Math.random() * 14).toFixed(1),
-              f1: +(83 + Math.random() * 16).toFixed(1)
-            }
-            task.outputModelName = `lora-${task.baseModel.toLowerCase()}-v${Math.ceil(Math.random() * 3)}`
-            task.duration = Math.floor(Math.random() * 7200) + 1800
-            task.endTime = new Date().toISOString().replace('T', ' ').substring(0, 19)
-            ElMessage.success(`微调任务 "${task.taskName}" 训练完成`)
-          }
-        }
-      })
-      fetchData()
+      fetchData()  // re-fetch from real API instead of mutating local mock
     }, 5000)
   } else {
     if (refreshTimer) {
@@ -383,15 +318,18 @@ function onAutoRefreshToggle(val: boolean) {
 
 // ---------- Cancel ----------
 async function handleCancel(row: FinetuneTask) {
-  await ElMessageBox.confirm(
-    `确定要取消微调任务 "${row.taskName}" 吗？`,
-    '取消微调',
-    { confirmButtonText: '确定取消', cancelButtonText: '返回', type: 'warning' }
-  )
-  row.status = 'cancelled'
-  row.progress = row.progress || 5
-  ElMessage.warning(`微调任务 "${row.taskName}" 已取消`)
-  fetchData()
+  try {
+    await ElMessageBox.confirm(
+      `确定要取消微调任务 "${row.taskName}" 吗？`,
+      '取消微调',
+      { confirmButtonText: '确定取消', cancelButtonText: '返回', type: 'warning' }
+    )
+    await cancelFinetuneTask(row.id)
+    ElMessage.warning(`微调任务 "${row.taskName}" 已取消`)
+    fetchData()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('取消失败: ' + (e?.message || '未知错误'))
+  }
 }
 
 // ---------- Create Dialog ----------
@@ -428,28 +366,21 @@ async function handleCreateTask() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
 
-  const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
-  const newTask: FinetuneTask = {
-    id: taskIdCounter++,
-    taskName: form.taskName,
-    baseModel: form.baseModel,
-    datasetName: form.datasetName.replace(/_/g, ' ').replace(/(\w+)$/, m => m.charAt(0).toUpperCase() + m.slice(1)),
-    datasetSize: form.datasetName.includes('contract') ? 500 : form.datasetName.includes('invoice') ? 300 : form.datasetName.includes('bol') ? 200 : 800,
-    status: 'running',
-    progress: 0,
-    epochs: form.epochs,
-    currentEpoch: 0,
-    learningRate: parseFloat(form.learningRate),
-    loss: 0.85,
-    startTime: now,
-    duration: 0,
-    createTime: now
+  try {
+    await createFinetuneTask({
+      taskName: form.taskName,
+      baseModel: form.baseModel,
+      datasetName: form.datasetName,
+      epochs: form.epochs,
+      learningRate: parseFloat(form.learningRate),
+    })
+    ElMessage.success('微调任务已创建，训练开始...')
+    dialogVisible.value = false
+    pagination.page = 1
+    fetchData()
+  } catch (e: any) {
+    ElMessage.error('创建失败: ' + (e?.message || '未知错误'))
   }
-
-  allMockTasks.unshift(newTask)
-  ElMessage.success('微调任务已创建，训练开始...')
-  dialogVisible.value = false
-  fetchData()
 }
 
 // ---------- Lifecycle ----------

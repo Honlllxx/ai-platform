@@ -171,6 +171,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import type { EvaluationItem } from '@/api/prompt'
+import { getEvaluations, runEvaluation, getPromptVersions } from '@/api/prompt'
 
 // ---------- Stats ----------
 const stats = reactive({
@@ -232,74 +233,24 @@ const loading = ref(false)
 const tableData = ref<EvaluationItem[]>([])
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
 
-// ---------- Mock Data ----------
-let evalIdCounter = 20
+// ---------- Data Fetching ----------
 
-function generateMockEvaluations(): EvaluationItem[] {
-  const taskNames = [
-    '合同提取评测-第1轮',
-    '发票OCR评测-第1轮',
-    '提单解析评测-第1轮',
-    '合同提取评测-第2轮',
-    '综合评测-基线测试',
-    '发票字段提取评测',
-    '版面分析评测-第1轮',
-    '表格提取评测-第1轮',
-    '合同提取评测-第3轮',
-    '校验流程评测',
-    '新版提示词评测',
-    '提单表格评测-第2轮',
-    '发票排版评测',
-    '综合评测-对比测试',
-    '字段提取评测-v2'
-  ]
-  const pvNames = [
-    '合同-字段提取提示词',
-    '发票-OCR识别提示词',
-    '提单-表格提取提示词',
-    '合同-字段提取提示词',
-    '综合-版面分析提示词',
-    '发票-字段提取提示词',
-    '版面-版面分析提示词',
-    '合同-表格提取提示词',
-    '合同-字段提取提示词',
-    '综合-校验提示词',
-    '新版提示词-beta',
-    '提单-表格提取提示词',
-    '发票-版面分析提示词',
-    '综合-版面分析提示词',
-    '字段提取-v2-beta'
-  ]
-  const datasetSizes = [500, 300, 200, 500, 1000, 300, 400, 500, 500, 1000, 500, 200, 300, 1000, 500]
-  const statuses: Array<EvaluationItem['status']> = ['completed', 'completed', 'completed', 'completed', 'completed', 'completed', 'running', 'completed', 'completed', 'completed', 'pending', 'completed', 'completed', 'failed', 'completed']
-
-  return taskNames.map((name, i) => ({
-    id: i + 1,
-    taskName: name,
-    promptVersionId: (i % 10) + 1,
-    promptVersionName: pvNames[i],
-    datasetSize: datasetSizes[i],
-    accuracy: +Math.min(99, Math.max(70, 85 + Math.random() * 15)).toFixed(1),
-    precision: +Math.min(99, Math.max(68, 83 + Math.random() * 17)).toFixed(1),
-    recall: +Math.min(99, Math.max(65, 80 + Math.random() * 20)).toFixed(1),
-    f1Score: +Math.min(99, Math.max(70, 84 + Math.random() * 16)).toFixed(1),
-    status: statuses[i],
-    duration: Math.floor(Math.random() * 600) + 60,
-    createTime: `2025-0${Math.min(9, (i % 6) + 3)}-${String((i * 5 + 1) % 28 + 1).padStart(2, '0')} ${String(8 + (i % 12)).padStart(2, '0')}:${String((i * 13) % 60).padStart(2, '0')}:00`
-  }))
-}
-
-const allMockData = generateMockEvaluations()
-
-function fetchData() {
+async function fetchData() {
   loading.value = true
-  setTimeout(() => {
-    computeStats(allMockData)
-    const start = (pagination.page - 1) * pagination.pageSize
-    tableData.value = allMockData.slice(start, start + pagination.pageSize)
-    pagination.total = allMockData.length
+  try {
+    const res = await getEvaluations({ page: pagination.page, pageSize: pagination.pageSize })
+    const result = res?.data || res || {}
+    const records = (result.records || result.list || result.data || []) as EvaluationItem[]
+    tableData.value = records
+    pagination.total = result.total || 0
+    computeStats(records)
+  } catch (e: any) {
+    console.error('Failed to load evaluations:', e)
+    tableData.value = []
+    pagination.total = 0
+  } finally {
     loading.value = false
-  }, 300)
+  }
 }
 
 // ---------- Chart ----------
@@ -337,20 +288,20 @@ const evalRules: FormRules = {
   datasetName: [{ required: true, message: '请选择数据集', trigger: 'change' }]
 }
 
-function openCreateDialog() {
-  const pvData: Array<{ id: number; name: string; version: string }> = [
-    { id: 1, name: '合同-版面分析提示词', version: 'v1.2.0' },
-    { id: 2, name: '合同-OCR识别提示词', version: 'v1.2.1' },
-    { id: 3, name: '合同-表格提取提示词', version: 'v1.2.0' },
-    { id: 4, name: '合同-字段提取提示词', version: 'v1.2.0' },
-    { id: 5, name: '合同-校验提示词', version: 'v1.2.0' },
-    { id: 6, name: '发票-OCR识别提示词', version: 'v1.1.0' },
-    { id: 7, name: '发票-字段提取提示词', version: 'v1.1.0' },
-    { id: 8, name: '提单-表格提取提示词', version: 'v1.1.0' },
-    { id: 9, name: '新版提示词-beta', version: 'v2.0.0' },
-    { id: 10, name: '字段提取-v2-beta', version: 'v2.0.0' }
-  ]
-  promptVersionOptions.value = pvData
+async function openCreateDialog() {
+  // Load prompt versions from API for the select dropdown
+  try {
+    const res = await getPromptVersions({ page: 1, pageSize: 200 })
+    const result = res?.data || res || {}
+    const pvList = ((result.records || result.list || result.data || []) as any[])
+    promptVersionOptions.value = pvList.map((pv: any) => ({
+      id: pv.id,
+      name: pv.name,
+      version: pv.version,
+    }))
+  } catch {
+    promptVersionOptions.value = []
+  }
   evalForm.taskName = ''
   evalForm.promptVersionId = null
   evalForm.datasetName = ''
@@ -362,47 +313,19 @@ async function handleRunEvaluation() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
 
-  const pv = promptVersionOptions.value.find(p => p.id === evalForm.promptVersionId)
-  const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
-
-  const newEval: EvaluationItem = {
-    id: evalIdCounter++,
-    taskName: evalForm.taskName,
-    promptVersionId: evalForm.promptVersionId!,
-    promptVersionName: pv?.name || '未知',
-    datasetSize: evalForm.datasetName.includes('500') ? 500 : evalForm.datasetName.includes('300') ? 300 : evalForm.datasetName.includes('200') ? 200 : 1000,
-    accuracy: 0,
-    precision: 0,
-    recall: 0,
-    f1Score: 0,
-    status: 'pending',
-    duration: 0,
-    createTime: now
-  }
-
-  allMockData.unshift(newEval)
-  ElMessage.success('评测任务已创建，开始运行...')
-  dialogVisible.value = false
-  fetchData()
-
-  // Simulate running -> completed
-  simulateEvalRun(newEval)
-}
-
-function simulateEvalRun(item: EvaluationItem) {
-  item.status = 'running'
-  fetchData()
-
-  setTimeout(() => {
-    item.status = 'completed'
-    item.accuracy = +Math.min(99, Math.max(70, 85 + Math.random() * 15)).toFixed(1)
-    item.precision = +Math.min(99, Math.max(68, 83 + Math.random() * 17)).toFixed(1)
-    item.recall = +Math.min(99, Math.max(65, 80 + Math.random() * 20)).toFixed(1)
-    item.f1Score = +Math.min(99, Math.max(70, 84 + Math.random() * 16)).toFixed(1)
-    item.duration = Math.floor(Math.random() * 400) + 60
-    ElMessage.success(`评测任务 "${item.taskName}" 已完成`)
+  try {
+    await runEvaluation({
+      taskName: evalForm.taskName,
+      promptVersionId: evalForm.promptVersionId!,
+      datasetName: evalForm.datasetName,
+    } as any)
+    ElMessage.success('评测任务已创建，开始运行...')
+    dialogVisible.value = false
+    pagination.page = 1
     fetchData()
-  }, 3000 + Math.random() * 2000)
+  } catch (e: any) {
+    ElMessage.error('创建评测失败: ' + (e?.message || '未知错误'))
+  }
 }
 
 // ---------- Lifecycle ----------

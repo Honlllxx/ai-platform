@@ -276,6 +276,13 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Search, Refresh, Plus, View, Check, RefreshLeft, Sort } from '@element-plus/icons-vue'
 import type { PromptVersion, PromptDiff } from '@/api/prompt'
+import {
+  getPromptVersions,
+  createPromptVersion,
+  updatePromptVersion,
+  rollbackPromptVersion,
+  getPromptDiff,
+} from '@/api/prompt'
 
 // ---------- Document Type & Stage Labels ----------
 const docTypeMap: Record<string, string> = {
@@ -342,64 +349,28 @@ function handleSearch() {
   fetchData()
 }
 
-// ---------- Mock Data ----------
-let versionIdCounter = 10
+// ---------- Data Fetching ----------
 
-function generateMockData(): PromptVersion[] {
-  const types = ['contract', 'invoice', 'bill_of_lading']
-  const stages = ['layout_analysis', 'ocr', 'table_extraction', 'field_extraction', 'validation']
-  const statuses: Array<'draft' | 'active' | 'archived'> = ['draft', 'active', 'archived']
-  const authors = ['admin', 'zhangsan', 'lisi']
-  const contentTemplates = [
-    '你需要分析以下文档的版面结构，识别出标题、段落、表格、图片等区域。\n\n文档类型：${docType}\n处理阶段：版面分析\n\n请按照以下JSON格式输出结果：\n{\n  "regions": [\n    {\n      "type": "title|paragraph|table|image",\n      "bbox": [x1, y1, x2, y2],\n      "confidence": 0.95\n    }\n  ]\n}',
-    '你需要对以下文档执行OCR识别，将图片中的文字转换为结构化文本。\n\n要求：\n1. 保持原始排版格式\n2. 识别所有文本区域\n3. 对低置信度字符进行标注\n4. 输出格式：按行输出，标注每行的位置信息',
-    '你需要提取文档中的表格数据，识别表头和单元格内容。\n\n表格提取规则：\n1. 识别表格边界\n2. 提取表头行\n3. 逐行提取单元格数据\n4. 处理合并单元格\n5. 输出结构化JSON格式',
-    '你需要从文档中提取关键字段信息。\n\n目标字段：\n- 文档编号\n- 日期\n- 当事人信息\n- 金额\n- 签署信息\n\n输出格式：JSON',
-    '你需要对提取结果进行校验，确保数据的准确性和完整性。\n\n校验规则：\n1. 必填字段检查\n2. 数据类型检查\n3. 逻辑一致性检查\n4. 交叉验证'
-  ]
-
-  return types.flatMap((docType, idx) =>
-    stages.map((stage, sIdx) => {
-      const id = idx * 5 + sIdx + 1
-      const status = id <= 5 ? 'active' : id <= 8 ? 'draft' : 'archived'
-      const baseVersion = id <= 5 ? '1.2.0' : id <= 8 ? '1.1.0' : '1.0.0'
-      const patchNum = id % 3
-      return {
-        id,
-        name: `${getDocTypeLabel(docType)}-${getStageLabel(stage)}提示词`,
-        version: `${baseVersion.substring(0, baseVersion.lastIndexOf('.') + 1)}${patchNum}`,
-        documentType: docType,
-        stage,
-        content: contentTemplates[sIdx].replace('${docType}', getDocTypeLabel(docType)),
-        author: authors[id % authors.length],
-        status,
-        commitMessage: status === 'draft' ? undefined : `更新${getStageLabel(stage)}提示词逻辑`,
-        gitCommitHash: `a1b2c3d${id}e`,
-        createTime: `2024-0${Math.min(9, id + 3)}-${String((id * 7) % 28 + 1).padStart(2, '0')} 10:00:00`,
-        updateTime: `2025-0${Math.min(9, (idx + 1) * 2)}-${String((id * 11) % 28 + 1).padStart(2, '0')} 14:30:00`
-      }
-    })
-  )
-}
-
-const allMockData = generateMockData()
-versionIdCounter = allMockData.length + 1
-
-function fetchData() {
+async function fetchData() {
   loading.value = true
-  setTimeout(() => {
-    let filtered = [...allMockData]
-    if (query.documentType) {
-      filtered = filtered.filter(v => v.documentType === query.documentType)
+  try {
+    const params: Record<string, any> = {
+      page: pagination.page,
+      pageSize: pagination.pageSize,
     }
-    if (query.stage) {
-      filtered = filtered.filter(v => v.stage === query.stage)
-    }
-    const start = (pagination.page - 1) * pagination.pageSize
-    tableData.value = filtered.slice(start, start + pagination.pageSize)
-    pagination.total = filtered.length
+    if (query.documentType) params.documentType = query.documentType
+    if (query.stage) params.stage = query.stage
+    const res = await getPromptVersions(params)
+    const result = res?.data || res || {}
+    tableData.value = (result.records || result.list || result.data || []) as PromptVersion[]
+    pagination.total = result.total || 0
+  } catch (e: any) {
+    console.error('Failed to load prompt versions:', e)
+    tableData.value = []
+    pagination.total = 0
+  } finally {
     loading.value = false
-  }, 300)
+  }
 }
 
 // ---------- Create/Edit ----------
@@ -450,61 +421,63 @@ async function handleSubmit() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
 
-  const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
-  if (isEdit.value) {
-    const idx = allMockData.findIndex(v => v.id === currentEditId.value)
-    if (idx >= 0) {
-      Object.assign(allMockData[idx], { ...form, updateTime: now })
+  try {
+    if (isEdit.value) {
+      await updatePromptVersion({
+        id: currentEditId.value,
+        ...form,
+        commitMessage: form.commitMessage || undefined,
+      } as any)
+      ElMessage.success('更新成功')
+    } else {
+      await createPromptVersion({
+        name: form.name,
+        version: form.version,
+        documentType: form.documentType,
+        stage: form.stage,
+        content: form.content,
+        commitMessage: form.commitMessage || undefined,
+      } as any)
+      ElMessage.success('创建成功')
     }
-    ElMessage.success('更新成功')
-  } else {
-    const newVersion: PromptVersion = {
-      id: versionIdCounter++,
-      ...form,
-      author: 'admin',
-      status: 'draft',
-      createTime: now,
-      updateTime: now
-    }
-    allMockData.unshift(newVersion)
-    ElMessage.success('创建成功')
+    dialogVisible.value = false
+    pagination.page = 1
+    fetchData()
+  } catch (e: any) {
+    ElMessage.error('操作失败: ' + (e?.message || '未知错误'))
   }
-  dialogVisible.value = false
-  fetchData()
 }
 
 // ---------- Activate ----------
 async function handleActivate(row: PromptVersion) {
-  await ElMessageBox.confirm(
-    `确定要将 "${row.name}" 设置为当前生效版本吗？同一文档类型和阶段的旧生效版本将被归档。`,
-    '设为当前',
-    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
-  )
-  allMockData.forEach(v => {
-    if (v.documentType === row.documentType && v.stage === row.stage && v.status === 'active') {
-      v.status = 'archived'
-    }
-  })
-  row.status = 'active'
-  ElMessage.success(`已将 "${row.name}" 设为当前生效版本`)
-  fetchData()
+  try {
+    await ElMessageBox.confirm(
+      `确定要将 "${row.name}" 设置为当前生效版本吗？`,
+      '设为当前',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+    )
+    await rollbackPromptVersion(row.id)
+    ElMessage.success(`已将 "${row.name}" 设为当前生效版本`)
+    fetchData()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('操作失败: ' + (e?.message || '未知错误'))
+  }
 }
 
 // ---------- Rollback ----------
 async function handleRollback(row: PromptVersion) {
-  await ElMessageBox.confirm(
-    `确定要回滚到 "${row.name} (${row.version})" 吗？当前生效版本将被归档。`,
-    '版本回滚',
-    { confirmButtonText: '确定回滚', cancelButtonText: '取消', type: 'warning' }
-  )
-  allMockData.forEach(v => {
-    if (v.documentType === row.documentType && v.stage === row.stage && v.status === 'active') {
-      v.status = 'archived'
-    }
-  })
-  row.status = 'active'
-  ElMessage.success(`已回滚到 "${row.name} (${row.version})"`)
-  fetchData()
+  try {
+    await ElMessageBox.confirm(
+      `确定要回滚到 "${row.name} (${row.version})" 吗？`,
+      '版本回滚',
+      { confirmButtonText: '确定回滚', cancelButtonText: '取消', type: 'warning' }
+    )
+    await rollbackPromptVersion(row.id)
+    ElMessage.success(`已回滚到 "${row.name} (${row.version})"`)
+    fetchData()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('回滚失败: ' + (e?.message || '未知错误'))
+  }
 }
 
 // ---------- View Detail ----------
@@ -541,28 +514,47 @@ const diffSideB = computed(() => {
   }))
 })
 
-function openDiffDialog(row: PromptVersion) {
-  allVersions.value = [...allMockData].sort((a, b) => b.id - a.id)
+async function openDiffDialog(row: PromptVersion) {
   diffVersionA.value = row.id
   diffVersionB.value = null
   diffResult.value = []
   diffDialogVisible.value = true
+  // Fetch all versions for the diff selector
+  try {
+    const res = await getPromptVersions({ page: 1, pageSize: 200, documentType: row.documentType })
+    const result = res?.data || res || {}
+    allVersions.value = ((result.records || result.list || result.data || []) as PromptVersion[])
+      .sort((a: PromptVersion, b: PromptVersion) => b.id - a.id)
+  } catch {
+    allVersions.value = []
+  }
 }
 
-function computeDiff() {
+async function computeDiff() {
   if (!diffVersionA.value || !diffVersionB.value) {
     diffResult.value = []
     return
   }
-  const versA = allMockData.find(v => v.id === diffVersionA.value)
-  const versB = allMockData.find(v => v.id === diffVersionB.value)
-  if (!versA || !versB) return
+  try {
+    const res = await getPromptDiff({
+      versionA: diffVersionA.value,
+      versionB: diffVersionB.value,
+    })
+    const result = res?.data || res || {}
+    diffResult.value = result.diffLines || result.lines || result || []
+  } catch {
+    // Fallback to client-side diff
+    const versA = allVersions.value.find(v => v.id === diffVersionA.value)
+    const versB = allVersions.value.find(v => v.id === diffVersionB.value)
+    if (!versA || !versB) return
+    diffResult.value = simpleClientDiff(versA.content, versB.content)
+  }
+}
 
-  const linesA = versA.content.split('\n')
-  const linesB = versB.content.split('\n')
+function simpleClientDiff(textA: string, textB: string): PromptDiff['diffLines'] {
+  const linesA = textA.split('\n')
+  const linesB = textB.split('\n')
   const result: PromptDiff['diffLines'] = []
-
-  // Simple line-by-line diff via LCS
   const maxLen = Math.max(linesA.length, linesB.length)
   const lcs = computeLCS(linesA, linesB)
   let i = 0, j = 0, k = 0

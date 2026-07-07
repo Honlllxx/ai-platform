@@ -154,35 +154,44 @@ function handleRegionClick(region: AnnotatorRegion) {
 }
 
 function loadOcrData() {
-  // Simulate OCR data
+  // Calculate stats from OCR entries
+  function calcStats(entries: OcrEntry[]) {
+    ocrStats.totalChars = entries.reduce((sum, e) => sum + e.text.length, 0)
+    ocrStats.avgConfidence = entries.length > 0
+      ? entries.reduce((sum, e) => sum + e.confidence, 0) / entries.length
+      : 0
+    ocrStats.language = '中文 (zh-CN)'
+  }
+
+  // Mock fallback
   const mockEntries: OcrEntry[] = [
     { id: 1, text: '采购合同协议书', confidence: 0.99, bbox: { x: 5, y: 3, width: 90, height: 6 } },
     { id: 2, text: '甲方（买方）：北京科技有限公司', confidence: 0.96, bbox: { x: 5, y: 11, width: 44, height: 5 } },
-    { id: 3, text: '统一社会信用代码：91110108MA01XXXXX', confidence: 0.94, bbox: { x: 5, y: 17, width: 44, height: 5 } },
-    { id: 4, text: '乙方（卖方）：上海信息技术有限公司', confidence: 0.95, bbox: { x: 51, y: 11, width: 44, height: 5 } },
-    { id: 5, text: '统一社会信用代码：91310115MA02XXXXX', confidence: 0.93, bbox: { x: 51, y: 17, width: 44, height: 5 } },
-    { id: 6, text: '第一条 合同标的', confidence: 0.97, bbox: { x: 5, y: 27, width: 44, height: 5 } },
-    { id: 7, text: '本合同项下买卖标的为服务器设备、网络交换机及相关配件，具体规格、数量及价格详见附件一《产品清单》。', confidence: 0.91, bbox: { x: 5, y: 33, width: 44, height: 12 } },
-    { id: 8, text: '第二条 产品质量标准', confidence: 0.96, bbox: { x: 51, y: 27, width: 44, height: 5 } },
-    { id: 9, text: '产品应符合中华人民共和国国家标准GB/T 9813-2016及双方确认的技术规格书的要求。', confidence: 0.88, bbox: { x: 51, y: 33, width: 44, height: 12 } },
-    { id: 10, text: '第三条 合同价款', confidence: 0.98, bbox: { x: 5, y: 50, width: 30, height: 5 } },
-    { id: 11, text: '合同总金额为人民币壹佰贰拾万元整（¥1,200,000.00），含13%增值税。', confidence: 0.92, bbox: { x: 5, y: 56, width: 90, height: 5 } },
-    { id: 12, text: '第四条 交货时间与地点', confidence: 0.97, bbox: { x: 5, y: 75, width: 44, height: 5 } },
-    { id: 13, text: '乙方应于合同生效后30个工作日内完成交货，交货地点为北京市海淀区中关村科技园区。', confidence: 0.89, bbox: { x: 5, y: 81, width: 90, height: 10 } },
+    { id: 3, text: '第一条 合同标的', confidence: 0.97, bbox: { x: 5, y: 27, width: 44, height: 5 } },
+    { id: 4, text: '第二条 产品质量标准', confidence: 0.96, bbox: { x: 51, y: 27, width: 44, height: 5 } },
+    { id: 5, text: '第三条 合同价款', confidence: 0.98, bbox: { x: 5, y: 50, width: 30, height: 5 } },
+    { id: 6, text: '合同总金额为人民币壹佰贰拾万元整（¥1,200,000.00），含13%增值税。', confidence: 0.92, bbox: { x: 5, y: 56, width: 90, height: 5 } },
+    { id: 7, text: '第四条 交货时间与地点', confidence: 0.97, bbox: { x: 5, y: 75, width: 44, height: 5 } },
+    { id: 8, text: '乙方应于合同生效后30个工作日内完成交货。', confidence: 0.89, bbox: { x: 5, y: 81, width: 90, height: 10 } },
   ]
 
-  ocrEntries.value = mockEntries
-
-  // Calculate stats
-  ocrStats.totalChars = mockEntries.reduce((sum, e) => sum + e.text.length, 0)
-  ocrStats.avgConfidence = mockEntries.reduce((sum, e) => sum + e.confidence, 0) / mockEntries.length
-  ocrStats.language = '中文 (zh-CN)'
-
-  // Try to fetch real data
+  // Try real API first, use mock as fallback
   if (props.documentId) {
-    getDocumentOcr(props.documentId).catch(() => {
-      // Use mock data
-    })
+    getDocumentOcr(props.documentId)
+      .then((res: any) => {
+        const entries = res?.data?.entries || res?.data
+        if (entries && entries.length > 0) {
+          ocrEntries.value = entries
+          calcStats(entries)
+        }
+      })
+      .catch(() => {
+        ocrEntries.value = mockEntries
+        calcStats(mockEntries)
+      })
+  } else {
+    ocrEntries.value = mockEntries
+    calcStats(mockEntries)
   }
 }
 
