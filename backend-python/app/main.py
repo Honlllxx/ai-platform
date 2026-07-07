@@ -1,3 +1,7 @@
+import os
+# Disable ONEDNN/MKLDNN to avoid PaddlePaddle 3.0 CPU PIR compatibility issues
+os.environ["FLAGS_use_onednn"] = "0"
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
