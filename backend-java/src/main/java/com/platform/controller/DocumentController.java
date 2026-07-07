@@ -13,18 +13,23 @@ import com.platform.mapper.document.DocumentMapper;
 import com.platform.mapper.document.DocumentOcrMapper;
 import com.platform.mapper.document.DocumentTableMapper;
 import com.platform.security.JwtTokenProvider;
+import com.platform.dto.PipelineTaskMessage;
 import com.platform.service.AiPipelineService;
 import com.platform.service.DocumentService;
+import com.platform.service.RocketMQProducerService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
@@ -39,6 +44,7 @@ public class DocumentController {
     private final DocumentOcrMapper documentOcrMapper;
     private final DocumentTableMapper documentTableMapper;
     private final AiPipelineService aiPipelineService;
+    private final RocketMQProducerService rocketMQProducerService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('document:list')")
@@ -187,6 +193,59 @@ public class DocumentController {
     public ApiResponse<Map<String, Object>> preprocess(@PathVariable Long id) {
         Map<String, Object> result = aiPipelineService.preprocessDocument(id);
         return ApiResponse.success(result);
+    }
+
+    /**
+     * Submit document for async AI processing via RocketMQ.
+     * Returns immediately with a taskId — processing happens in the background.
+     * Poll GET /api/pipeline for status updates.
+     */
+    @PostMapping("/{id}/pipeline")
+    @PreAuthorize("hasAuthority('document:list')")
+    public ApiResponse<Map<String, Object>> submitPipeline(
+            @PathVariable Long id,
+            @RequestBody(required = false) List<Map<String, String>> metadataFields,
+            HttpServletRequest request) {
+
+        Document doc = documentMapper.selectById(id);
+        if (doc == null) {
+            return ApiResponse.error(404, "文档不存在");
+        }
+
+        // Update document status
+        doc.setStatus("queued");
+        documentMapper.updateById(doc);
+
+        // Build task message
+        String taskId = UUID.randomUUID().toString();
+        Long userId = getCurrentUserId(request);
+
+        PipelineTaskMessage task = new PipelineTaskMessage();
+        task.setDocumentId(id);
+        task.setTaskId(taskId);
+        task.setFileName(doc.getFileName());
+        task.setFileUrl(doc.getFileUrl());
+        task.setMetadataFields(metadataFields);
+        task.setUserId(userId);
+        task.setTimestamp(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+
+        // Send to RocketMQ
+        rocketMQProducerService.submitPipelineTask(task);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("documentId", id);
+        result.put("taskId", taskId);
+        result.put("status", "queued");
+        result.put("message", "文档已提交异步处理，可通过 Pipeline API 查询进度");
+        return ApiResponse.success(result);
+    }
+
+    private Long getCurrentUserId(HttpServletRequest request) {
+        String token = extractToken(request);
+        if (token != null) {
+            return jwtTokenProvider.getUserIdFromToken(token);
+        }
+        return null;
     }
 
     private String extractToken(HttpServletRequest request) {
