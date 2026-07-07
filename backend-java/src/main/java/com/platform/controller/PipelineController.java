@@ -1,6 +1,5 @@
 package com.platform.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.platform.dto.ApiResponse;
 import com.platform.dto.PageResult;
@@ -9,12 +8,8 @@ import com.platform.entity.pipeline.ExtractionResult;
 import com.platform.entity.pipeline.Pipeline;
 import com.platform.entity.pipeline.ReflectionResult;
 import com.platform.entity.pipeline.ValidationResult;
-import com.platform.mapper.document.DocumentMapper;
-import com.platform.mapper.pipeline.ExtractionResultMapper;
-import com.platform.mapper.pipeline.PipelineMapper;
-import com.platform.mapper.pipeline.ReflectionResultMapper;
-import com.platform.mapper.pipeline.ValidationResultMapper;
 import com.platform.service.AiPipelineService;
+import com.platform.service.PipelineService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -27,11 +22,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PipelineController {
 
-    private final PipelineMapper pipelineMapper;
-    private final ExtractionResultMapper extractionResultMapper;
-    private final ValidationResultMapper validationResultMapper;
-    private final ReflectionResultMapper reflectionResultMapper;
-    private final DocumentMapper documentMapper;
+    private final PipelineService pipelineService;
     private final AiPipelineService aiPipelineService;
 
     @GetMapping
@@ -41,31 +32,20 @@ public class PipelineController {
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String status) {
 
-        LambdaQueryWrapper<Pipeline> wrapper = new LambdaQueryWrapper<>();
-        if (status != null && !status.isBlank()) {
-            wrapper.eq(Pipeline::getStatus, status);
-        }
-        wrapper.orderByDesc(Pipeline::getCreatedAt);
-
-        Page<Pipeline> pipelinePage = pipelineMapper.selectPage(new Page<>(page, pageSize), wrapper);
+        Page<Pipeline> pipelinePage = pipelineService.pageQuery(page, pageSize, status);
 
         // Batch fetch document names
         Set<Long> docIds = pipelinePage.getRecords().stream()
                 .map(Pipeline::getDocumentId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<Long, String> docNameMap = new HashMap<>();
-        if (!docIds.isEmpty()) {
-            List<Document> docs = documentMapper.selectBatchIds(docIds);
-            docNameMap = docs.stream().collect(Collectors.toMap(Document::getId, Document::getFileName));
-        }
+        Map<Long, String> docNameMap = pipelineService.getDocumentNameMap(docIds);
 
-        Map<Long, String> finalDocNameMap = docNameMap;
         List<Map<String, Object>> records = pipelinePage.getRecords().stream().map(p -> {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("id", p.getId());
             map.put("documentId", p.getDocumentId());
-            map.put("documentName", finalDocNameMap.getOrDefault(p.getDocumentId(), ""));
+            map.put("documentName", docNameMap.getOrDefault(p.getDocumentId(), ""));
             map.put("taskId", p.getTaskId());
             map.put("status", p.getStatus());
             map.put("currentStep", p.getCurrentStep());
@@ -87,7 +67,7 @@ public class PipelineController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('pipeline:list')")
     public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
-        Pipeline p = pipelineMapper.selectById(id);
+        Pipeline p = pipelineService.getById(id);
         if (p == null) {
             return ApiResponse.success(null);
         }
@@ -109,16 +89,10 @@ public class PipelineController {
         map.put("updateTime", p.getUpdatedAt());
 
         // Document name
-        if (p.getDocumentId() != null) {
-            Document doc = documentMapper.selectById(p.getDocumentId());
-            map.put("documentName", doc != null ? doc.getFileName() : "");
-        } else {
-            map.put("documentName", "");
-        }
+        map.put("documentName", pipelineService.getDocumentName(p.getDocumentId()));
 
         // Extraction results
-        List<ExtractionResult> extractions = extractionResultMapper.selectList(
-                new LambdaQueryWrapper<ExtractionResult>().eq(ExtractionResult::getPipelineId, id));
+        List<ExtractionResult> extractions = pipelineService.getExtractions(id);
         map.put("extractionResults", extractions.stream().map(e -> {
             Map<String, Object> em = new LinkedHashMap<>();
             em.put("id", e.getId());
@@ -132,8 +106,7 @@ public class PipelineController {
         }).collect(Collectors.toList()));
 
         // Validation results
-        List<ValidationResult> validations = validationResultMapper.selectList(
-                new LambdaQueryWrapper<ValidationResult>().eq(ValidationResult::getPipelineId, id));
+        List<ValidationResult> validations = pipelineService.getValidations(id);
         map.put("validationResults", validations.stream().map(v -> {
             Map<String, Object> vm = new LinkedHashMap<>();
             vm.put("id", v.getId());
@@ -146,8 +119,7 @@ public class PipelineController {
         }).collect(Collectors.toList()));
 
         // Reflection results
-        List<ReflectionResult> reflections = reflectionResultMapper.selectList(
-                new LambdaQueryWrapper<ReflectionResult>().eq(ReflectionResult::getPipelineId, id));
+        List<ReflectionResult> reflections = pipelineService.getReflections(id);
         map.put("reflectionResults", reflections.stream().map(r -> {
             Map<String, Object> rm = new LinkedHashMap<>();
             rm.put("id", r.getId());
