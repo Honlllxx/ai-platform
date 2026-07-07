@@ -1,20 +1,13 @@
 package com.platform.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.platform.dto.ApiResponse;
 import com.platform.dto.PageResult;
 import com.platform.entity.business.Review;
 import com.platform.entity.business.ReviewField;
 import com.platform.entity.business.ReviewHistory;
-import com.platform.entity.document.Document;
-import com.platform.entity.system.User;
-import com.platform.mapper.business.ReviewFieldMapper;
-import com.platform.mapper.business.ReviewHistoryMapper;
-import com.platform.mapper.business.ReviewMapper;
-import com.platform.mapper.document.DocumentMapper;
-import com.platform.mapper.system.UserMapper;
 import com.platform.security.JwtTokenProvider;
+import com.platform.service.ReviewService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,12 +21,18 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReviewController {
 
-    private final ReviewMapper reviewMapper;
-    private final ReviewFieldMapper reviewFieldMapper;
-    private final ReviewHistoryMapper reviewHistoryMapper;
-    private final DocumentMapper documentMapper;
-    private final UserMapper userMapper;
+    private final ReviewService reviewService;
     private final JwtTokenProvider jwtTokenProvider;
+
+    @PostMapping
+    @PreAuthorize("hasAuthority('review:create')")
+    public ApiResponse<Map<String, Object>> create(@RequestBody Map<String, Object> body) {
+        Review r = reviewService.createReview(body);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", r.getId());
+        result.put("status", r.getStatus());
+        return ApiResponse.success(result);
+    }
 
     @GetMapping
     @PreAuthorize("hasAuthority('review:list')")
@@ -43,16 +42,7 @@ public class ReviewController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String documentType) {
 
-        LambdaQueryWrapper<Review> wrapper = new LambdaQueryWrapper<>();
-        if (status != null && !status.isBlank()) {
-            wrapper.eq(Review::getStatus, status);
-        }
-        if (documentType != null && !documentType.isBlank()) {
-            wrapper.eq(Review::getDocumentType, documentType);
-        }
-        wrapper.orderByDesc(Review::getCreatedAt);
-
-        Page<Review> reviewPage = reviewMapper.selectPage(new Page<>(page, pageSize), wrapper);
+        Page<Review> reviewPage = reviewService.pageQuery(page, pageSize, status, documentType);
 
         // Batch fetch document names and reviewer names
         Set<Long> docIds = reviewPage.getRecords().stream()
@@ -60,24 +50,14 @@ public class ReviewController {
         Set<Long> reviewerIds = reviewPage.getRecords().stream()
                 .map(Review::getReviewerId).filter(Objects::nonNull).collect(Collectors.toSet());
 
-        Map<Long, String> docNameMap = new HashMap<>();
-        Map<Long, String> userNameMap = new HashMap<>();
-        if (!docIds.isEmpty()) {
-            List<Document> docs = documentMapper.selectBatchIds(docIds);
-            docNameMap = docs.stream().collect(Collectors.toMap(Document::getId, Document::getFileName));
-        }
-        if (!reviewerIds.isEmpty()) {
-            List<User> users = userMapper.selectBatchIds(reviewerIds);
-            userNameMap = users.stream().collect(Collectors.toMap(User::getId, User::getUsername));
-        }
+        Map<Long, String> docNameMap = reviewService.getDocumentNameMap(docIds);
+        Map<Long, String> userNameMap = reviewService.getUserNameMap(reviewerIds);
 
-        Map<Long, String> finalDocNameMap = docNameMap;
-        Map<Long, String> finalUserNameMap = userNameMap;
         List<Map<String, Object>> records = reviewPage.getRecords().stream().map(r -> {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("id", r.getId());
             map.put("documentId", r.getDocumentId());
-            map.put("documentName", finalDocNameMap.getOrDefault(r.getDocumentId(), ""));
+            map.put("documentName", docNameMap.getOrDefault(r.getDocumentId(), ""));
             map.put("pipelineId", r.getPipelineId());
             map.put("documentType", r.getDocumentType());
             map.put("status", r.getStatus());
@@ -86,7 +66,7 @@ public class ReviewController {
             map.put("approvedFields", r.getApprovedFields());
             map.put("rejectedFields", r.getRejectedFields());
             map.put("reviewerId", r.getReviewerId());
-            map.put("reviewer", finalUserNameMap.getOrDefault(r.getReviewerId(), ""));
+            map.put("reviewer", userNameMap.getOrDefault(r.getReviewerId(), ""));
             map.put("reviewedAt", r.getReviewedAt());
             map.put("createTime", r.getCreatedAt());
             map.put("updateTime", r.getUpdatedAt());
@@ -100,7 +80,7 @@ public class ReviewController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('review:list')")
     public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
-        Review r = reviewMapper.selectById(id);
+        Review r = reviewService.getById(id);
         if (r == null) {
             return ApiResponse.success(null);
         }
@@ -121,23 +101,17 @@ public class ReviewController {
         map.put("updateTime", r.getUpdatedAt());
 
         // Document name
-        if (r.getDocumentId() != null) {
-            Document doc = documentMapper.selectById(r.getDocumentId());
-            map.put("documentName", doc != null ? doc.getFileName() : "");
-        } else {
-            map.put("documentName", "");
-        }
+        map.put("documentName", reviewService.getDocumentNameMap(
+                r.getDocumentId() != null ? Set.of(r.getDocumentId()) : Set.of())
+                .getOrDefault(r.getDocumentId(), ""));
+
         // Reviewer name
-        if (r.getReviewerId() != null) {
-            User reviewer = userMapper.selectById(r.getReviewerId());
-            map.put("reviewer", reviewer != null ? reviewer.getUsername() : "");
-        } else {
-            map.put("reviewer", "");
-        }
+        map.put("reviewer", reviewService.getUserNameMap(
+                r.getReviewerId() != null ? Set.of(r.getReviewerId()) : Set.of())
+                .getOrDefault(r.getReviewerId(), ""));
 
         // Review fields
-        List<ReviewField> fields = reviewFieldMapper.selectList(
-                new LambdaQueryWrapper<ReviewField>().eq(ReviewField::getReviewId, id));
+        List<ReviewField> fields = reviewService.getFields(id);
         map.put("fields", fields.stream().map(f -> {
             Map<String, Object> fm = new LinkedHashMap<>();
             fm.put("id", f.getId());
@@ -158,8 +132,7 @@ public class ReviewController {
     @GetMapping("/{id}/fields")
     @PreAuthorize("hasAuthority('review:list')")
     public ApiResponse<List<Map<String, Object>>> getFields(@PathVariable Long id) {
-        List<ReviewField> fields = reviewFieldMapper.selectList(
-                new LambdaQueryWrapper<ReviewField>().eq(ReviewField::getReviewId, id));
+        List<ReviewField> fields = reviewService.getFields(id);
         List<Map<String, Object>> records = fields.stream().map(f -> {
             Map<String, Object> fm = new LinkedHashMap<>();
             fm.put("id", f.getId());
@@ -182,7 +155,13 @@ public class ReviewController {
             @PathVariable Long id,
             @PathVariable Long fieldId,
             HttpServletRequest request) {
-        return handleFieldAction(id, fieldId, "approved", null, null, request);
+        Long operatorId = getCurrentUserId(request);
+        ReviewField field = reviewService.handleFieldAction(id, fieldId, "approved", null, null, operatorId);
+        if (field == null) return ApiResponse.error(404, "审核字段不存在");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", field.getId());
+        result.put("status", field.getStatus());
+        return ApiResponse.success(result);
     }
 
     @PostMapping("/{id}/fields/{fieldId}/reject")
@@ -193,7 +172,13 @@ public class ReviewController {
             @RequestBody(required = false) Map<String, Object> body,
             HttpServletRequest request) {
         String comment = body != null ? (String) body.get("comment") : null;
-        return handleFieldAction(id, fieldId, "rejected", null, comment, request);
+        Long operatorId = getCurrentUserId(request);
+        ReviewField field = reviewService.handleFieldAction(id, fieldId, "rejected", null, comment, operatorId);
+        if (field == null) return ApiResponse.error(404, "审核字段不存在");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", field.getId());
+        result.put("status", field.getStatus());
+        return ApiResponse.success(result);
     }
 
     @PostMapping("/{id}/fields/{fieldId}/correct")
@@ -204,7 +189,13 @@ public class ReviewController {
             @RequestBody Map<String, Object> body,
             HttpServletRequest request) {
         String correctedValue = (String) body.get("correctedValue");
-        return handleFieldAction(id, fieldId, "corrected", correctedValue, null, request);
+        Long operatorId = getCurrentUserId(request);
+        ReviewField field = reviewService.handleFieldAction(id, fieldId, "corrected", correctedValue, null, operatorId);
+        if (field == null) return ApiResponse.error(404, "审核字段不存在");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", field.getId());
+        result.put("status", field.getStatus());
+        return ApiResponse.success(result);
     }
 
     @PostMapping("/{id}/batch-approve")
@@ -216,9 +207,7 @@ public class ReviewController {
         Long operatorId = getCurrentUserId(request);
         @SuppressWarnings("unchecked")
         List<Integer> fieldIds = (List<Integer>) body.getOrDefault("fieldIds", Collections.emptyList());
-        for (Integer fid : fieldIds) {
-            updateFieldStatus(id, fid.longValue(), "approved", operatorId);
-        }
+        reviewService.batchUpdateFields(id, fieldIds.stream().map(Long::valueOf).toList(), "approved", operatorId);
         return ApiResponse.success();
     }
 
@@ -231,20 +220,14 @@ public class ReviewController {
         Long operatorId = getCurrentUserId(request);
         @SuppressWarnings("unchecked")
         List<Integer> fieldIds = (List<Integer>) body.getOrDefault("fieldIds", Collections.emptyList());
-        for (Integer fid : fieldIds) {
-            updateFieldStatus(id, fid.longValue(), "rejected", operatorId);
-        }
+        reviewService.batchUpdateFields(id, fieldIds.stream().map(Long::valueOf).toList(), "rejected", operatorId);
         return ApiResponse.success();
     }
 
     @GetMapping("/{id}/history")
     @PreAuthorize("hasAuthority('review:list')")
     public ApiResponse<List<Map<String, Object>>> history(@PathVariable Long id) {
-        List<ReviewHistory> histories = reviewHistoryMapper.selectList(
-                new LambdaQueryWrapper<ReviewHistory>()
-                        .eq(ReviewHistory::getReviewId, id)
-                        .orderByDesc(ReviewHistory::getCreatedAt));
-
+        List<ReviewHistory> histories = reviewService.getHistory(id);
         List<Map<String, Object>> records = histories.stream().map(h -> {
             Map<String, Object> hm = new LinkedHashMap<>();
             hm.put("id", h.getId());
@@ -255,72 +238,7 @@ public class ReviewController {
             hm.put("createTime", h.getCreatedAt());
             return hm;
         }).collect(Collectors.toList());
-
         return ApiResponse.success(records);
-    }
-
-    // === Private helpers ===
-
-    private ApiResponse<Map<String, Object>> handleFieldAction(
-            Long reviewId, Long fieldId, String status,
-            String correctedValue, String comment, HttpServletRequest request) {
-        ReviewField field = reviewFieldMapper.selectById(fieldId);
-        if (field == null) {
-            return ApiResponse.error(404, "审核字段不存在");
-        }
-
-        field.setStatus(status);
-        if (correctedValue != null) {
-            field.setCorrectedValue(correctedValue);
-        }
-        if (comment != null) {
-            field.setComment(comment);
-        }
-        reviewFieldMapper.updateById(field);
-
-        // Update review counts
-        Review review = reviewMapper.selectById(reviewId);
-        if (review != null) {
-            review.setReviewedFields(review.getReviewedFields() + 1);
-            if ("approved".equals(status)) {
-                review.setApprovedFields(review.getApprovedFields() + 1);
-            } else if ("rejected".equals(status)) {
-                review.setRejectedFields(review.getRejectedFields() + 1);
-            }
-            if (review.getReviewedFields() >= review.getTotalFields()) {
-                review.setStatus("approved");
-            }
-            reviewMapper.updateById(review);
-        }
-
-        // Save history
-        Long operatorId = getCurrentUserId(request);
-        ReviewHistory history = new ReviewHistory();
-        history.setReviewId(reviewId);
-        history.setFieldId(fieldId);
-        history.setAction(status);
-        history.setOperatorId(operatorId);
-        reviewHistoryMapper.insert(history);
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", field.getId());
-        result.put("status", field.getStatus());
-        return ApiResponse.success(result);
-    }
-
-    private void updateFieldStatus(Long reviewId, Long fieldId, String status, Long operatorId) {
-        ReviewField field = reviewFieldMapper.selectById(fieldId);
-        if (field != null) {
-            field.setStatus(status);
-            reviewFieldMapper.updateById(field);
-
-            ReviewHistory history = new ReviewHistory();
-            history.setReviewId(reviewId);
-            history.setFieldId(fieldId);
-            history.setAction("batch_" + status);
-            history.setOperatorId(operatorId);
-            reviewHistoryMapper.insert(history);
-        }
     }
 
     private Long getCurrentUserId(HttpServletRequest request) {
