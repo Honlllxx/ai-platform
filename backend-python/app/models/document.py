@@ -50,7 +50,7 @@ class DocumentTable(Base):
     __tablename__ = "document_tables"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, unique=True)
+    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)  # non-unique: one doc may have many tables
     confidence = Column(Float)
     original_table = Column(JSONB, nullable=False, default=dict)
     extracted_table = Column(JSONB, nullable=False, default=dict)
