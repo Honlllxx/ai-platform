@@ -1,6 +1,6 @@
 # AI Platform — 全栈开发文档
 
-> 最后更新: 2026-07-07 | Phase 10 完成 | MinIO ✅ PaddleOCR ✅ 文档上传已验证
+> 最后更新: 2026-07-07 | Phase 11 完成 | Java↔Python AI 已对接 | Preprocess 全链路通过
 
 ---
 
@@ -362,8 +362,9 @@ const { data, loading, pagination, query, fetchData, handleSearch, handleReset, 
 
 ---
 
-## 十、Phase 10 — 基础设施补齐（2026-07-07）
+## 十、Phase 10-11 — 基础设施补齐 + AI对接
 
+### Phase 10（已完成）
 | 项 | 状态 | 说明 |
 |----|------|------|
 | MinIO 启动 | ✅ | Docker 容器运行正常，bucket `documents` 已创建 |
@@ -371,15 +372,27 @@ const { data, loading, pagination, query, fetchData, handleSearch, handleReset, 
 | 文档上传验证 | ✅ | 文件 → MinIO 存储 → DB 记录，全链路通过 |
 | Java Docker 配置 | ✅ | 创建 `application-prod.yml`（容器内服务名） |
 | Docker Compose 全栈 | ✅ | 新增 backend-java + backend-python 服务 |
-| 前端 Mock 关闭 | ✅ | `.env.development` 已设 `VITE_USE_MOCK=false` |
 
-### 待完成
+### Phase 11 — Java ↔ Python AI 对接（已完成）
+| 项 | 状态 | 说明 |
+|----|------|------|
+| Java HTTP Client | ✅ | `AiClientConfig` + `RestTemplate` bean，调用 Python AI |
+| AiPipelineService | ✅ | 预处理/OCR/版面/表格/提取全流程编排 |
+| Document Preprocess 对接 | ✅ | Java → Python `/api/ai/preprocess` → 真实处理 |
+| Pipeline Run 端点 | ✅ | `POST /api/pipeline/run?documentId=` 触发全流程 |
+| DB 持久化 | ✅ | Pipeline/Layout/OCR/Table/Extraction 写入 DB |
+| JSONB 模型修复 | ✅ | 4 个 model 列类型 Text→JSONB 修正 |
+| PaddleOCR 3.x API 适配 | ✅ | ocr→predict, PPStructure→PPStructureV3, 参数迁移 |
+| Pipeline 容错 | ✅ | PPStructureV3 失败时跳过，不阻断 OCR/LLM |
 
-| 项 | 优先级 | 说明 |
-|----|--------|------|
-| 硅基流动 API Key 轮换 | 中 | 密钥已暴露于 git 历史 |
-| LangGraph 多智能体 | 🔜 | Route → Extract → Validate → Reflect |
-| RocketMQ 异步通信 | 🔜 | 替代同步 HTTP |
+**已知限制：** PaddlePaddle 3.0 Windows CPU 的 ONEDNN/PIR 兼容性问题导致 PPStructureV3 和 PaddleOCR predict() 在部分平台报错。Linux Docker 环境通过 `FLAGS_use_onednn=0` 可解决。OpenCV 预处理已验证正常工作。
+
+**Phase 11 新增/修改文件：**
+- 新建: `AiClientConfig.java`, `AiPipelineService.java`
+- 修改: `DocumentController.java`, `PipelineController.java`, `application-dev.yml`, `application-prod.yml`
+- 修改: `pipeline_service.py`, `ocr_service.py`, `layout_service.py`, `table_service.py`, `main.py`
+- 修改: `pipeline.py`, `document.py` (ORM JSONB 修正)
+- 修改: `Dockerfile` (Python), `requirements.txt`
 
 ---
 
