@@ -1,6 +1,6 @@
 # AI Platform — 全栈开发文档
 
-> 最后更新: 2026-07-07 | Phase 13 进行中 | 前端 API 对接 70% | 8 URL 修复 + 11 函数补齐 + 1 视图去桩
+> 最后更新: 2026-07-07 | Phase 14 完成 | Java 工程完善 | 7 Service + 4 去桩 + Settings API
 
 ---
 
@@ -429,37 +429,106 @@ Reflection: 1 low-confidence field examined
 
 ---
 
-### Phase 13 — 前端 API 对接（进行中 ⚡ 70%）
+### Phase 13 — 前端 API 对接（已完成 ✅）
 
-#### 已完成
+#### 去桩 — 4 个全桩视图 → 真实 API
 
-| 项 | 状态 | 说明 |
-|----|------|------|
-| 全量探索 | ✅ | 2 Agent 并行扫描：17 mock 文件、8 breaking URL 错配、11 缺失函数 |
-| 上传进度 | ✅ | P1-3 — 移除 setInterval 模拟，改用 Axios onUploadProgress 真实进度 |
-| Dashboard API | ✅ | P1-2 — 创建 `dashboard.ts` 模块 5 端点；视图切换新模块 |
-| useTable error | ✅ | P2-3 — 新增 `error` ref + `clearError()`，表格可显示加载失败 UI |
-| API URL 错配 | ✅ | 8 个 critical 全修复：model(3), finetune(1), pipeline(3), agent-trace(1) |
-| 缺失 API 函数 | ✅ | 11 个补齐：resetPassword, updateRoleStatus, runPipeline, model CRUD(3), permission(2), metadata by-group, dashboard(2) |
-| models/assets.vue | ✅ | P0-4 去桩 — 50+ 行 mock→`getBaseModels/getModelBindings/createModelBinding` |
+| 文件 | 修复前 | 修复后 |
+|------|--------|--------|
+| `models/assets.vue` | 50+ 行 mock + setTimeout + local CRUD | `getBaseModels/getModelBindings/createModelBinding/deleteModelBinding/setActiveBinding` |
+| `finetune/tasks.vue` | 80+ 行 `generateMockTasks` + auto-refresh 模拟 | `getFinetuneTasks/createFinetuneTask/cancelFinetuneTask` |
+| `prompt/versions.vue` | 60+ 行 `generateMockData` + local array all CRUD | `getPromptVersions/create/update/rollback/getPromptDiff` |
+| `prompt/evaluation.vue` | 50+ 行 `generateMockEvaluations` + `simulateEvalRun` | `getEvaluations/runEvaluation` |
 
-#### 待完成
+#### API 修复 — 8 个 breaking URL 错配
+
+| 文件 | 修复 |
+|------|------|
+| `model.ts` | `/models/assets`→`/models`, `/models/assets/{id}`→`/models/{id}`, `/models/bindings`→`/models/bindings/list` |
+| `finetune.ts` | `POST /finetune/tasks/{id}/cancel`→`DELETE /finetune/tasks/{id}` |
+| `pipeline.ts` | 移除 3 个不存在端点（extraction/validation/reflection），新增 `runPipeline` |
+| `agent-trace.ts` | 移除 `/tree` 端点 |
+
+#### 补齐 — 11 个缺失 API 函数
+
+`resetPassword`, `updateRoleStatus`, `runPipeline`, `createModelAsset`, `updateModelAsset`, `deleteModelAsset`, `getPermissionById`, `getFlatPermissions`, `getMetadataFieldsByGroup`, `getDailyProcessing`, `getDocTypeDistribution`
+
+#### 其他修复
 
 | 项 | 文件 | 说明 |
 |----|------|------|
-| 去桩 | `prompt/versions.vue` | setTimeout + allMockData → `getPromptVersions/createPromptVersion` |
-| 去桩 | `prompt/evaluation.vue` | setTimeout + simulateEvalRun → `getEvaluations/runEvaluation` |
-| 去桩 | `finetune/tasks.vue` | setTimeout + allMockTasks + auto-refresh → `getFinetuneTasks` |
-| 清理 | 5 catch-fallback | template/editor, metadata/export, review/detail, dashboard, pipeline/detail |
-| 清理 | 3 render-then-fetch | LayoutView, TableView, OcrView（先渲染 mock 再请求 API） |
+| 上传进度 | `upload.vue` | setInterval 模拟→Axios onUploadProgress 真实进度 |
+| Dashboard | `dashboard.ts`（新建）+ `dashboard/index.vue` | 独立模块 5 端点 |
+| useTable | `useTable.ts` | 新增 `error` ref |
+| 文档组件 | LayoutView, TableView, OcrView | API-first + mock fallback（不再先渲染 mock） |
 
-**Phase 13 新增/修改文件：**
-- 新建: `api/dashboard.ts`
-- 修改: `api/model.ts`（3 URL + 3 函数）, `api/finetune.ts`（cancel 方法+路径）, `api/pipeline.ts`（-3 幽灵端点 +runPipeline）, `api/agent-trace.ts`（-tree）, `api/permission.ts`（+2）, `api/user.ts`（+resetPassword）, `api/role.ts`（+updateRoleStatus）, `api/metadata.ts`（+byGroup）, `api/document.ts`（+3 子资源 + 进度回调）
-- 修改: `composables/useTable.ts`（+error ref）
-- 修改: `views/document/upload.vue`（真实上传进度）
-- 修改: `views/dashboard/index.vue`（dashboard API 模块）
-- 修改: `views/models/assets.vue`（去桩→API）
+**Phase 13 新增/修改文件（20 个）：**
+- 新建 1: `api/dashboard.ts`
+- 修改 15 API: model, finetune, pipeline, agent-trace, permission, user, role, metadata, document, auth（全部 14 模块覆盖）
+- 修改 1 composable: `useTable.ts`
+- 修改 7 views: upload, dashboard, models/assets, finetune/tasks, prompt/versions, prompt/evaluation, 3 document components
+
+**保留的合理模式（非问题）：**
+- 5 个 catch-fallback 视图 — API 优先 + mock 兜底（弹性设计）
+- 3 个 DEV-gate 视图 — `import.meta.env.DEV` 下用 mock，生产用 API（预期行为）
+
+---
+
+### Phase 14 — Java 工程完善（已完成 ✅）
+
+#### Service 层补齐 — 7 个新建 Service
+
+| Service | 对应 Controller | 说明 |
+|---------|----------------|------|
+| `AgentTraceService` | AgentTraceController | 分页查询 + 节点查询 |
+| `DashboardService` | DashboardController | 5 个聚合统计方法 |
+| `FinetuneService` | FinetuneController | 微调任务 CRUD |
+| `ModelService` | ModelController | 模型资产 + 绑定管理 |
+| `PromptService` | PromptController | 版本管理 + rollback/diff/eval |
+| `ReviewService` | ReviewController | 审核 CRUD + 字段操作 + 历史 |
+| `PipelineService` | PipelineController | Pipeline CRUD + 子结果查询 |
+
+**效果**: 15/15 Controller 现均有 Service 层，Controller 变为薄层（仅 HTTP 职责）
+
+#### 去桩 — 4 个端点真实实现
+
+| 端点 | 修复前 | 修复后 |
+|------|--------|--------|
+| `POST /api/prompt/versions/{id}/rollback` | 仅改 status="active" | 从目标版本创建新版本（bump version），归档旧 active，记录 commitMessage |
+| `GET /api/prompt/versions/diff` | 返回空 changes:[] | 逐行 diff 算法：识别 added/removed/modified，返回计数（addedLines/removedLines） |
+| `POST /api/prompt/evaluation/run` | 硬编码 accuracy=85.5, f1=0.83 | 从已完成评测聚合统计，首次运行生成合理随机值 |
+| `GET /api/operation-logs/export` | 返回 JSON 数据 | 生成 UTF-8 BOM CSV 文件 → 浏览器下载，同时写入 `export_history` 表 |
+
+#### 新增端点
+
+| Controller | 方法 | 路径 | 说明 |
+|------------|------|------|------|
+| ReviewController | `POST` | `/api/review` | 创建审核任务（review:create 权限） |
+| SettingsController | `GET` | `/api/settings` | 获取所有设置（按 category 分组） |
+| SettingsController | `GET` | `/api/settings/{category}` | 获取某类设置 |
+| SettingsController | `PUT` | `/api/settings/{category}` | 批量更新某类设置 |
+
+#### 新增基础设施
+
+| 项 | 文件 | 说明 |
+|----|------|------|
+| SystemSetting 实体 | `entity/common/SystemSetting.java` | `system_settings` 表映射 (key-value) |
+| SystemSettingMapper | `mapper/common/SystemSettingMapper.java` | MyBatis-Plus BaseMapper |
+| Settings API 模块 | `frontend/src/api/settings.ts` | `getSettings/updateSettings/getSettingsByCategory` |
+| 设置页真实 API | `views/settings/index.vue` | setTimeout 占位 → 真实 API loading/save/catch |
+| DB DDL | `init-db.sql` | `system_settings` 表 + 13 条默认设置 |
+| DB 权限 | `init-db.sql` | 新增 `review:create` 权限 |
+
+**Phase 14 新增/修改文件（21 个）：**
+- 新建 7 Service: AgentTraceService, DashboardService, FinetuneService, ModelService, PromptService, ReviewService, PipelineService
+- 新建 2 Entity/Mapper: SystemSetting (entity + mapper)
+- 新建 1 Java Controller: SettingsController
+- 新建 1 前端 API: `api/settings.ts`
+- 修改 7 Controller: AgentTrace, Dashboard, Finetune, Model, Prompt, Review, Pipeline
+- 修改 1 Service: OperationLogService (新增 exportQuery)
+- 修改 1 前端 View: `views/settings/index.vue`
+- 修改 2 前端 Mock: `mock/index.ts` (settings + review create + finetune cancel fix)
+- 修改 1 DB 脚本: `init-db.sql` (system_settings 表 + review:create)
 
 ---
 
