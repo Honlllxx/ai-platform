@@ -1,13 +1,11 @@
 package com.platform.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.platform.dto.ApiResponse;
 import com.platform.dto.PageResult;
 import com.platform.entity.log.AgentTrace;
 import com.platform.entity.log.AgentTraceNode;
-import com.platform.mapper.log.AgentTraceMapper;
-import com.platform.mapper.log.AgentTraceNodeMapper;
+import com.platform.service.AgentTraceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -20,8 +18,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AgentTraceController {
 
-    private final AgentTraceMapper agentTraceMapper;
-    private final AgentTraceNodeMapper agentTraceNodeMapper;
+    private final AgentTraceService agentTraceService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('log:agent')")
@@ -31,17 +28,7 @@ public class AgentTraceController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword) {
 
-        LambdaQueryWrapper<AgentTrace> wrapper = new LambdaQueryWrapper<>();
-        if (status != null && !status.isBlank()) {
-            wrapper.eq(AgentTrace::getStatus, status);
-        }
-        if (keyword != null && !keyword.isBlank()) {
-            wrapper.and(w -> w.like(AgentTrace::getTraceId, keyword)
-                    .or().like(AgentTrace::getUsername, keyword));
-        }
-        wrapper.orderByDesc(AgentTrace::getCreatedAt);
-
-        Page<AgentTrace> tracePage = agentTraceMapper.selectPage(new Page<>(page, pageSize), wrapper);
+        Page<AgentTrace> tracePage = agentTraceService.pageQuery(page, pageSize, status, keyword);
 
         List<Map<String, Object>> records = tracePage.getRecords().stream().map(t -> {
             Map<String, Object> map = new LinkedHashMap<>();
@@ -68,7 +55,7 @@ public class AgentTraceController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('log:agent')")
     public ApiResponse<Map<String, Object>> detail(@PathVariable Long id) {
-        AgentTrace trace = agentTraceMapper.selectById(id);
+        AgentTrace trace = agentTraceService.getById(id);
         if (trace == null) {
             return ApiResponse.success(null);
         }
@@ -88,9 +75,7 @@ public class AgentTraceController {
         map.put("finishedAt", trace.getFinishedAt());
         map.put("createTime", trace.getCreatedAt());
 
-        List<AgentTraceNode> nodes = agentTraceNodeMapper.selectList(
-                new LambdaQueryWrapper<AgentTraceNode>().eq(AgentTraceNode::getTraceId, id));
-
+        List<AgentTraceNode> nodes = agentTraceService.getNodesByTraceId(id);
         List<Map<String, Object>> nodeMaps = nodes.stream().map(n -> {
             Map<String, Object> nm = new LinkedHashMap<>();
             nm.put("id", n.getId());
