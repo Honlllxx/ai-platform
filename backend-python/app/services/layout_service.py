@@ -13,21 +13,18 @@ class LayoutService:
     def model(self):
         """Lazy-load PaddleOCR layout model."""
         if self._model is None:
-            from paddleocr import PPStructure
+            from paddleocr import PPStructureV3
             from app.config import get_settings
             settings = get_settings()
-            self._model = PPStructure(
+            self._model = PPStructureV3(
                 lang=settings.ocr_lang,
-                use_gpu=settings.ocr_use_gpu,
-                show_log=False,
-                recovery=True,
             )
         return self._model
 
     def analyze(self, image: np.ndarray) -> list[dict]:
         """Analyze document layout. Returns regions with type, coordinates, content."""
-        # PPStructure can accept numpy array
-        result = self.model(image)
+        # PPStructureV3 uses predict() instead of direct call
+        result = self.model.predict(image)
 
         regions = []
         for idx, block in enumerate(result):
