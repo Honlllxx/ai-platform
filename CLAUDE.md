@@ -1,6 +1,6 @@
 # AI Platform — 全栈开发文档
 
-> 最后更新: 2026-07-07 | Phase 14 完成 | Java 工程完善 | 7 Service + 4 去桩 + Settings API
+> 最后更新: 2026-07-07 | Phase 15 完成 | LangGraph + RocketMQ | 状态图管线 + 异步消息
 
 ---
 
@@ -529,6 +529,61 @@ Reflection: 1 low-confidence field examined
 - 修改 1 前端 View: `views/settings/index.vue`
 - 修改 2 前端 Mock: `mock/index.ts` (settings + review create + finetune cancel fix)
 - 修改 1 DB 脚本: `init-db.sql` (system_settings 表 + review:create)
+
+---
+
+### Phase 15 — LangGraph + RocketMQ 异步架构（已完成 ✅）
+
+#### LangGraph 状态图管线
+
+| 节点 | 功能 | 输入 → 输出 |
+|------|------|-------------|
+| `route` | 预处理 + 版面 + OCR + 表格 | image → processed, layout, ocr, tables |
+| `extract` | LLM 字段提取 | ocr_text + metadata_fields → extraction_results |
+| `validate` | 字段校验 | extraction_results → validation_results |
+| `reflect` | 低置信度反思纠正 | extraction_results → corrected values |
+| `done` | 完成标记 | — |
+
+**条件边**: validate → reflect（有低置信度/失败字段时），reflect → validate（重新校验），max 2 次循环防无限
+
+**新增文件**:
+- `backend-python/app/services/graph_service.py` — PipelineGraph 状态图（route→extract→validate→reflect→done）
+- `backend-python/app/services/graph_state.py` — PipelineState 类型定义
+
+**新增端点**:
+- `POST /api/ai/pipeline/graph` — LangGraph 状态图管线（与线性 `/pipeline/run` 并列）
+
+#### RocketMQ 异步消息
+
+**架构**: `Document上传 → Java Producer → RocketMQ Topic → Java Consumer → Python AI → DB 持久化`
+
+| 组件 | 文件 | 说明 |
+|------|------|------|
+| Broker 配置 | `rocketmq/broker.conf` | autoCreateTopic + 存储配置 |
+| 消息 DTO | `dto/PipelineTaskMessage.java` | documentId, taskId, fileUrl, metadata |
+| Producer | `RocketMQProducerService.java` | RocketMQTemplate 同步发送至 `pipeline-task` topic |
+| Consumer | `PipelineTaskConsumer.java` | @RocketMQMessageListener 异步消费，调用 Python AI |
+| 异步上传 | `POST /api/documents/{id}/pipeline` | 文档上传后入队，立即返回 taskId |
+| 异步管线 | `POST /api/pipeline/run-async` | 流水线任务入队，立即返回 taskId |
+
+**Docker**: `backend-java` 添加 `rocketmq-namesrv` service_healthy 依赖
+
+**流程**:
+```
+POST /api/documents/{id}/pipeline → status: "queued" + taskId (立即返回)
+  ↓ RocketMQ
+PipelineTaskConsumer.onMessage()
+  → 更新 doc.status = "processing"
+  → AI: runPipeline() 调用 Python API
+  → 更新 doc.status = "completed" | "failed"
+```
+
+**Phase 15 新增/修改文件（11 个）**:
+- 新建 2 Python: `graph_service.py`, `graph_state.py`
+- 新建 3 Java: `PipelineTaskMessage.java`, `RocketMQProducerService.java`, `PipelineTaskConsumer.java`
+- 新建 1 配置: `rocketmq/broker.conf`
+- 修改 4 Java: DocumentController, PipelineController, docker-compose.yml, requirements.txt
+- 修改 1 Python: `routers/ai.py`
 
 ---
 
