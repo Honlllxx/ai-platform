@@ -524,6 +524,33 @@ CREATE TABLE webhook_config (
     updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE system_settings (
+    id              BIGSERIAL       PRIMARY KEY,
+    setting_key     VARCHAR(255)    NOT NULL,
+    setting_value   TEXT,
+    category        VARCHAR(100)    NOT NULL DEFAULT 'general',
+    description     VARCHAR(500),
+    created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX idx_system_settings_cat_key ON system_settings(category, setting_key);
+
+-- Default system settings
+INSERT INTO system_settings (setting_key, setting_value, category, description) VALUES
+    ('siteName', 'AI Platform', 'basic', '系统名称'),
+    ('logo', '', 'basic', '系统Logo URL'),
+    ('description', '智能管理平台', 'basic', '系统描述'),
+    ('pageSize', '20', 'basic', '每页条数'),
+    ('tokenExpire', '120', 'security', 'Token过期时间(分钟)'),
+    ('maxLoginAttempts', '5', 'security', '最大登录尝试次数'),
+    ('minPasswordLength', '6', 'security', '密码最小长度'),
+    ('sessionTimeout', '30', 'security', '会话超时(分钟)'),
+    ('retentionDays', '90', 'log', '日志保留天数'),
+    ('enableOperationLog', 'true', 'log', '操作日志记录'),
+    ('enableAgentTrace', 'true', 'log', 'Agent链路记录'),
+    ('logRequestParams', 'true', 'log', '记录请求参数'),
+    ('logResponseResult', 'false', 'log', '记录响应结果');
+
 -- ============================================================
 -- 7. 种子数据
 -- ============================================================
@@ -566,6 +593,7 @@ INSERT INTO permissions (id, name, code, type, parent_id, path, icon, sort) VALU
 -- 审核工作台
 (9,  '审核工作台',   'review',                 'menu',   NULL, NULL,                        'Checked',        40),
 (10, '审核列表',     'review:list',            'menu',   9,    '/review/list',              NULL,             41),
+(11, '创建审核',     'review:create',         'button', 9,    NULL,                        NULL,             42),
 -- 元数据管理
 (11, '元数据管理',   'metadata',               'menu',   NULL, NULL,                        'Grid',           50),
 (12, '字段列表',     'metadata:list',          'menu',   11,   '/metadata/fields',          NULL,             51),
@@ -608,7 +636,7 @@ INSERT INTO permissions (id, name, code, type, parent_id, sort) VALUES
 -- 元数据操作
 (38, '编辑元数据', 'metadata:update',   'button', 11, 531);
 
-SELECT setval('permissions_id_seq', 38);
+SELECT setval('permissions_id_seq', 39);
 
 -- 7.4 角色-权限关联
 -- admin(1) 拥有所有权限
