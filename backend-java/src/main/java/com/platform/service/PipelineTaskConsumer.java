@@ -20,16 +20,24 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Async consumer: picks up pipeline-task messages from RocketMQ and calls Python AI.
+ * [FALLBACK] Java-side pipeline consumer — calls Python AI via HTTP.
  *
- * Flow: RocketMQ → this consumer → Python AI REST /api/ai/pipeline/graph → DB persistence
+ * This consumer is in a separate group from the Python RocketMQ consumer.
+ * When the Python consumer is active (normal operation), this consumer
+ * will NOT receive messages because Python is in the primary consumer group.
+ *
+ * If Python is down and you need Java to bridge via HTTP, change the
+ * consumerGroup to a different value and restart.
+ *
+ * Primary flow: RocketMQ → Python Consumer → LangGraph → Python Producer
+ *               → pipeline-result → PipelineResultConsumer
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 @RocketMQMessageListener(
     topic = "pipeline-task",
-    consumerGroup = "platform-consumer-group",
+    consumerGroup = "platform-consumer-group-fallback",
     selectorExpression = "pipeline"
 )
 public class PipelineTaskConsumer implements RocketMQListener<String> {
