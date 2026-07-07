@@ -32,6 +32,19 @@ class Settings(BaseSettings):
     pipeline_llm_timeout: int = 120  # seconds
     pipeline_ocr_timeout: int = 60
 
+    # MinIO — file storage (for RocketMQ consumer to download documents)
+    minio_endpoint: str = "localhost:9000"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin123"
+    minio_bucket: str = "documents"
+
+    # RocketMQ
+    rocketmq_namesrv: str = "localhost:9876"
+    rocketmq_consumer_group: str = "python-consumer-group"
+    rocketmq_consumer_topic: str = "pipeline-task"
+    rocketmq_producer_group: str = "python-producer-group"
+    rocketmq_result_topic: str = "pipeline-result"
+
     @property
     def database_url(self) -> str:
         return (
