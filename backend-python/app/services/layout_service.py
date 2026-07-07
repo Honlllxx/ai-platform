@@ -1,30 +1,20 @@
-"""Layout analysis service — identifies text blocks, tables, images in documents."""
+"""Layout analysis service — identifies text blocks, tables, images in documents.
+
+Uses the shared PPStructureV3 singleton from ``model_loader`` so layout and
+table analysis share one model instance.
+"""
 
 import numpy as np
+
+from app.services.model_loader import model_loader
 
 
 class LayoutService:
     """Document layout analysis using PaddleOCR's built-in layout model."""
 
-    def __init__(self):
-        self._model = None
-
-    @property
-    def model(self):
-        """Lazy-load PaddleOCR layout model."""
-        if self._model is None:
-            from paddleocr import PPStructureV3
-            from app.config import get_settings
-            settings = get_settings()
-            self._model = PPStructureV3(
-                lang=settings.ocr_lang,
-            )
-        return self._model
-
     def analyze(self, image: np.ndarray) -> list[dict]:
         """Analyze document layout. Returns regions with type, coordinates, content."""
-        # PPStructureV3 uses predict() instead of direct call
-        result = self.model.predict(image)
+        result = model_loader.predict(image)
 
         regions = []
         for idx, block in enumerate(result):
@@ -39,7 +29,7 @@ class LayoutService:
                 "y": int(bbox[1]),
                 "width": int(bbox[2] - bbox[0]),
                 "height": int(bbox[3] - bbox[1]),
-                "confidence": 0.9,  # PaddleOCR doesn't expose per-block confidence easily
+                "confidence": 0.9,
                 "content": "",
             }
 
