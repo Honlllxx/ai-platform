@@ -115,6 +115,7 @@ public class AiPipelineService {
         // Create pipeline record
         Pipeline pipeline = new Pipeline();
         pipeline.setDocumentId(documentId);
+        pipeline.setTaskId(java.util.UUID.randomUUID().toString());
         pipeline.setStatus("running");
         pipeline.setCurrentStep("preprocess");
         pipeline.setTotalSteps(5);
