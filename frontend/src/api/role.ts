@@ -59,3 +59,8 @@ export function deleteRole(id: number) {
 export function assignPermissions(roleId: number, permissionIds: number[]) {
   return request.post(`/roles/${roleId}/permissions`, { permissionIds })
 }
+
+/** Enable or disable a role. */
+export function updateRoleStatus(roleId: number, status: 0 | 1) {
+  return request.patch(`/roles/${roleId}/status`, { status })
+}

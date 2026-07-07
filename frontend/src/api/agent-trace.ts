@@ -46,10 +46,10 @@ export function getAgentTraces(params: TraceQuery) {
   return request.get('/agent-traces', { params })
 }
 
+/** Get trace detail — includes tree nodes in the response (no separate /tree endpoint). */
 export function getAgentTraceById(id: string) {
   return request.get(`/agent-traces/${id}`)
 }
 
-export function getTraceTree(traceId: string) {
-  return request.get(`/agent-traces/${traceId}/tree`)
-}
+// Note: tree data is included in the getAgentTraceById response as `nodes`.
+// There is no separate /tree endpoint.

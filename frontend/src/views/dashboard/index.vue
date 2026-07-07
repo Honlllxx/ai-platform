@@ -150,8 +150,13 @@ import {
   GridComponent,
   DatasetComponent
 } from 'echarts/components'
-import { getDashboardStats, getOperationTrend, getOperationTypeDistribution } from '@/api/auth'
-import request from '@/utils/request'
+import {
+  getDashboardStats,
+  getDailyProcessing,
+  getDocTypeDistribution,
+  getOperationTrend,
+  getOperationTypeDistribution,
+} from '@/api/dashboard'
 
 use([
   CanvasRenderer,
@@ -216,7 +221,7 @@ async function loadDashboard() {
 
   // Daily processing trend
   try {
-    const res = await request.get('/dashboard/daily-processing')
+    const res = await getDailyProcessing()
     const data = res?.data || []
     const dates = data.map((d: any) => d.date)
     const autoPassed = data.map((d: any) => d.autoPassed)
@@ -264,7 +269,7 @@ async function loadDashboard() {
 
   // Document type distribution
   try {
-    const res = await request.get('/dashboard/doc-type-distribution')
+    const res = await getDocTypeDistribution()
     const data = res?.data || []
     docTypePieOption.value = {
       tooltip: { trigger: 'item', formatter: '{b}: {c} 份 ({d}%)' },

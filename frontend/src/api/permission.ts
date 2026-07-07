@@ -21,6 +21,16 @@ export function getPermissionTree() {
   return request.get('/permissions/tree')
 }
 
+/** Get flat permission list (no tree nesting). */
+export function getFlatPermissions() {
+  return request.get('/permissions/flat')
+}
+
+/** Get a single permission by ID. */
+export function getPermissionById(id: number) {
+  return request.get(`/permissions/${id}`)
+}
+
 export function createPermission(data: Partial<PermissionInfo>) {
   return request.post('/permissions', data)
 }

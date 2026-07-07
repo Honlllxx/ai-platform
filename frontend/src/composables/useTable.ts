@@ -17,6 +17,7 @@ interface UseTableOptions<T> {
 export function useTable<T>(options: UseTableOptions<T>) {
   const tableRef = ref()
   const loading = ref(false)
+  const error = ref<string | null>(null)           // ← NEW: error state for UI
   const data = ref<T[]>([]) as Ref<T[]>
   const pagination = reactive<PaginationState>({
     page: 1,
@@ -29,6 +30,7 @@ export function useTable<T>(options: UseTableOptions<T>) {
 
   async function fetchData() {
     loading.value = true
+    error.value = null
     try {
       const params = {
         ...query,
@@ -40,13 +42,18 @@ export function useTable<T>(options: UseTableOptions<T>) {
       data.value = result.records || result.list || result.data || []
       pagination.total = result.total || 0
       options.onSuccess?.(data.value)
-    } catch (error) {
+    } catch (e: any) {
       data.value = []
       pagination.total = 0
-      options.onError?.(error)
+      error.value = e?.response?.data?.message || e?.message || '加载数据失败，请稍后重试'
+      options.onError?.(e)
     } finally {
       loading.value = false
     }
+  }
+
+  function clearError() {
+    error.value = null
   }
 
   function handleSearch(newQuery?: Record<string, unknown>) {
@@ -87,6 +94,7 @@ export function useTable<T>(options: UseTableOptions<T>) {
   return {
     tableRef,
     loading,
+    error,
     data,
     pagination,
     query,
@@ -96,6 +104,7 @@ export function useTable<T>(options: UseTableOptions<T>) {
     handleReset,
     handlePageChange,
     handleSizeChange,
-    refresh
+    refresh,
+    clearError,
   }
 }

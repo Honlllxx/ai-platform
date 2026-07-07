@@ -287,35 +287,26 @@ async function uploadSingleFile(item: QueueItem): Promise<void> {
     const formData = new FormData()
     formData.append('file', item.rawFile)
 
-    // Simulate progress for the mock layer
-    const startTime = Date.now()
-    const estimatedDuration = 1000 + Math.random() * 2000
     item.status = 'uploading'
+    item.percent = 0
     uploadQueue.value = [...uploadQueue.value]
 
-    const progressTimer = setInterval(() => {
-      if (cancelToken.value) {
-        clearInterval(progressTimer)
-        item.status = 'pending'
-        item.percent = 0
-        reject(new Error('Cancelled'))
-        return
+    // Use real Axios upload progress instead of a simulated timer
+    uploadDocument(formData, (progressEvent: ProgressEvent) => {
+      if (cancelToken.value) return
+      if (progressEvent.lengthComputable) {
+        // Cap at 90% until the server responds
+        item.percent = Math.min(90, Math.round((progressEvent.loaded * 90) / progressEvent.total))
+        uploadQueue.value = [...uploadQueue.value]
       }
-      const elapsed = Date.now() - startTime
-      item.percent = Math.min(90, Math.round((elapsed / estimatedDuration) * 90))
-      uploadQueue.value = [...uploadQueue.value]
-    }, 100)
-
-    uploadDocument(formData)
+    })
       .then(() => {
-        clearInterval(progressTimer)
         item.status = 'success'
         item.percent = 100
         uploadQueue.value = [...uploadQueue.value]
         resolve()
       })
       .catch((err) => {
-        clearInterval(progressTimer)
         if (err?.message === 'Cancelled') {
           resolve()
           return

@@ -53,35 +53,22 @@ export interface ReflectionItem {
   timestamp: string
 }
 
+// ── Pipeline ──
+
 export function getPipelines(params: { page: number; pageSize: number; status?: string; keyword?: string }) {
   return request.get('/pipeline', { params })
 }
 
+/** Get pipeline detail — includes extraction/validation/reflection in one response. */
 export function getPipeline(id: number) {
   return request.get(`/pipeline/${id}`)
 }
 
-export function getPipelineExtraction(id: number) {
-  return request.get(`/pipeline/${id}/extraction`)
+/** Trigger a full pipeline run for a document. */
+export function runPipeline(documentId: number, metadataFields?: Array<{ code: string; name: string; type: string }>) {
+  return request.post('/pipeline/run', metadataFields || [], { params: { documentId } })
 }
 
-export function getPipelineValidation(id: number) {
-  return request.get(`/pipeline/${id}/validation`)
-}
+// ── Document sub-resources (moved to document.ts as well, kept here for backward compat) ──
 
-export function getPipelineReflection(id: number) {
-  return request.get(`/pipeline/${id}/reflection`)
-}
-
-// Document sub-resources
-export function getDocumentLayout(id: number) {
-  return request.get(`/documents/${id}/layout`)
-}
-
-export function getDocumentOcr(id: number) {
-  return request.get(`/documents/${id}/ocr`)
-}
-
-export function getDocumentTable(id: number) {
-  return request.get(`/documents/${id}/table`)
-}
+export { getDocumentLayout, getDocumentOcr, getDocumentTable } from './document'

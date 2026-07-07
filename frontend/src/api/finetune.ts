@@ -33,6 +33,7 @@ export function createFinetuneTask(data: { taskName: string; baseModel: string; 
   return request.post('/finetune/tasks', data)
 }
 
+/** Cancel (delete) a finetune task — fixed: was POST /cancel, now DELETE per Java API. */
 export function cancelFinetuneTask(id: number) {
-  return request.post(`/finetune/tasks/${id}/cancel`)
+  return request.delete(`/finetune/tasks/${id}`)
 }

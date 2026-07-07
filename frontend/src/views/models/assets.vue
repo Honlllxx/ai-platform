@@ -302,6 +302,13 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Check, Delete, ArrowRight } from '@element-plus/icons-vue'
 import type { BaseModel, ModelBinding } from '@/api/model'
+import {
+  getBaseModels,
+  createModelBinding,
+  getModelBindings,
+  deleteModelBinding,
+  setActiveBinding,
+} from '@/api/model'
 
 // ---------- Helpers ----------
 function assetStatusType(status: string): '' | 'success' | 'warning' | 'info' | 'danger' {
@@ -334,56 +341,33 @@ function onTabChange(tab: string) {
   }
 }
 
-// ---------- Mock Data ----------
-const allMockModels: BaseModel[] = [
-  // Base Models (type: 'base')
-  { id: 1, name: 'Qwen2-7B-Instruct', version: 'v2.1.0', type: 'base', description: '', size: '7B', status: 'active', framework: 'PyTorch', metrics: { accuracy: 87.5, f1: 86.2, inferenceTime: 45 }, createTime: '2024-08-15 10:00:00' },
-  { id: 2, name: 'Qwen2-14B-Instruct', version: 'v2.1.0', type: 'base', description: '', size: '14B', status: 'active', framework: 'PyTorch', metrics: { accuracy: 91.3, f1: 90.1, inferenceTime: 78 }, createTime: '2024-08-15 10:30:00' },
-  { id: 3, name: 'Llama3-8B-Instruct', version: 'v1.0.0', type: 'base', description: '', size: '8B', status: 'active', framework: 'Transformers', metrics: { accuracy: 86.8, f1: 85.4, inferenceTime: 52 }, createTime: '2024-09-01 08:00:00' },
-  { id: 4, name: 'ChatGLM3-6B', version: 'v3.0.0', type: 'base', description: '', size: '6B', status: 'inactive', framework: 'PyTorch', metrics: { accuracy: 83.2, f1: 82.0, inferenceTime: 38 }, createTime: '2024-07-20 16:00:00' },
-  { id: 5, name: 'Baichuan2-13B-Chat', version: 'v2.0.0', type: 'base', description: '', size: '13B', status: 'active', framework: 'Transformers', metrics: { accuracy: 89.1, f1: 88.3, inferenceTime: 65 }, createTime: '2024-10-05 14:00:00' },
-  { id: 6, name: 'DeepSeek-V2-Lite', version: 'v1.0.0', type: 'base', description: '', size: '16B', status: 'training', framework: 'PyTorch', metrics: { accuracy: 85.0, f1: 83.5, inferenceTime: 55 }, createTime: '2024-11-01 09:00:00' },
+// ───── Real API Helpers ─────
 
-  // LoRA Adapters (type: 'lora')
-  { id: 11, name: 'contract-layout-lora', version: 'v1.2.0', type: 'lora', description: 'Qwen2-7B', size: '24MB', status: 'active', framework: '16', metrics: undefined, createTime: '2024-09-10 11:00:00' },
-  { id: 12, name: 'contract-field-lora', version: 'v1.3.0', type: 'lora', description: 'Qwen2-14B', size: '48MB', status: 'active', framework: '32', metrics: undefined, createTime: '2024-09-12 14:00:00' },
-  { id: 13, name: 'invoice-ocr-lora', version: 'v1.0.0', type: 'lora', description: 'Llama3-8B', size: '16MB', status: 'active', framework: '16', metrics: undefined, createTime: '2024-09-20 09:30:00' },
-  { id: 14, name: 'bol-table-lora', version: 'v1.1.0', type: 'lora', description: 'Qwen2-7B', size: '22MB', status: 'inactive', framework: '16', metrics: undefined, createTime: '2024-10-02 15:00:00' },
-  { id: 15, name: 'comprehensive-lora', version: 'v2.0.0', type: 'lora', description: 'Baichuan2-13B', size: '60MB', status: 'active', framework: '32', metrics: undefined, createTime: '2024-11-10 10:00:00' },
-
-  // Datasets (type: 'dataset')
-  { id: 21, name: '合同文档数据集', version: 'v2.1', type: 'dataset', description: '5,200 条', size: '合同', status: 'active', framework: undefined, metrics: undefined, createTime: '2024-08-20 10:00:00' },
-  { id: 22, name: '发票数据集', version: 'v1.3', type: 'dataset', description: '3,800 条', size: '发票', status: 'active', framework: undefined, metrics: undefined, createTime: '2024-08-25 11:00:00' },
-  { id: 23, name: '提单数据集', version: 'v1.0', type: 'dataset', description: '2,100 条', size: '提单', status: 'active', framework: undefined, metrics: undefined, createTime: '2024-09-05 08:30:00' },
-  { id: 24, name: '综合文档数据集', version: 'v3.0', type: 'dataset', description: '12,000 条', size: '综合', status: 'active', framework: undefined, metrics: undefined, createTime: '2024-10-15 13:00:00' },
-  { id: 25, name: '表格提取专项集', version: 'v1.0', type: 'dataset', description: '1,500 条', size: '综合', status: 'inactive', framework: undefined, metrics: undefined, createTime: '2024-11-01 16:00:00' }
-]
-
-// Bindings
-let bindingIdCounter = 10
-const allBindings: ModelBinding[] = [
-  { id: 1, baseModelId: 1, baseModelName: 'Qwen2-7B-Instruct', loraAdapterId: 11, loraAdapterName: 'contract-layout-lora', datasetId: 21, datasetName: '合同文档数据集', bindingName: '合同版面分析组合', status: 'active', createTime: '2024-10-01 10:00:00' },
-  { id: 2, baseModelId: 2, baseModelName: 'Qwen2-14B-Instruct', loraAdapterId: 12, loraAdapterName: 'contract-field-lora', datasetId: 21, datasetName: '合同文档数据集', bindingName: '合同字段提取组合', status: 'active', createTime: '2024-10-03 10:00:00' },
-  { id: 3, baseModelId: 3, baseModelName: 'Llama3-8B-Instruct', loraAdapterId: 13, loraAdapterName: 'invoice-ocr-lora', datasetId: 22, datasetName: '发票数据集', bindingName: '发票OCR识别组合', status: 'active', createTime: '2024-10-05 09:30:00' },
-  { id: 4, baseModelId: 1, baseModelName: 'Qwen2-7B-Instruct', loraAdapterId: 14, loraAdapterName: 'bol-table-lora', datasetId: 23, datasetName: '提单数据集', bindingName: '提单表格提取组合', status: 'inactive', createTime: '2024-10-08 14:00:00' },
-  { id: 5, baseModelId: 5, baseModelName: 'Baichuan2-13B-Chat', loraAdapterId: 15, loraAdapterName: 'comprehensive-lora', datasetId: 24, datasetName: '综合文档数据集', bindingName: '综合分析组合', status: 'active', createTime: '2024-11-12 10:00:00' },
-  { id: 6, baseModelId: 2, baseModelName: 'Qwen2-14B-Instruct', loraAdapterId: 15, loraAdapterName: 'comprehensive-lora', datasetId: 24, datasetName: '综合文档数据集', bindingName: '综合大模型组合', status: 'inactive', createTime: '2024-11-15 16:00:00' }
-]
+async function apiFetchModels(type: string, pagination: { page: number; pageSize: number }) {
+  try {
+    const res = await getBaseModels({ page: pagination.page, pageSize: pagination.pageSize, type })
+    const result = res?.data || res || {}
+    return {
+      records: (result.records || result.list || result.data || []) as BaseModel[],
+      total: result.total || 0,
+    }
+  } catch (e) {
+    console.error(`Failed to load ${type} models:`, e)
+    return { records: [], total: 0 }
+  }
+}
 
 // ---------- Tab 1: Base Models ----------
 const baseLoading = ref(false)
 const baseModelData = ref<BaseModel[]>([])
 const basePagination = reactive({ page: 1, pageSize: 10, total: 0 })
 
-function fetchBase() {
+async function fetchBase() {
   baseLoading.value = true
-  setTimeout(() => {
-    const filtered = allMockModels.filter(m => m.type === 'base')
-    const start = (basePagination.page - 1) * basePagination.pageSize
-    baseModelData.value = filtered.slice(start, start + basePagination.pageSize)
-    basePagination.total = filtered.length
-    baseLoading.value = false
-  }, 200)
+  const { records, total } = await apiFetchModels('base', basePagination)
+  baseModelData.value = records
+  basePagination.total = total
+  baseLoading.value = false
 }
 
 // ---------- Tab 2: LoRA ----------
@@ -391,15 +375,12 @@ const loraLoading = ref(false)
 const loraData = ref<BaseModel[]>([])
 const loraPagination = reactive({ page: 1, pageSize: 10, total: 0 })
 
-function fetchLora() {
+async function fetchLora() {
   loraLoading.value = true
-  setTimeout(() => {
-    const filtered = allMockModels.filter(m => m.type === 'lora')
-    const start = (loraPagination.page - 1) * loraPagination.pageSize
-    loraData.value = filtered.slice(start, start + loraPagination.pageSize)
-    loraPagination.total = filtered.length
-    loraLoading.value = false
-  }, 200)
+  const { records, total } = await apiFetchModels('lora', loraPagination)
+  loraData.value = records
+  loraPagination.total = total
+  loraLoading.value = false
 }
 
 // ---------- Tab 3: Dataset ----------
@@ -407,15 +388,12 @@ const datasetLoading = ref(false)
 const datasetData = ref<BaseModel[]>([])
 const datasetPagination = reactive({ page: 1, pageSize: 10, total: 0 })
 
-function fetchDataset() {
+async function fetchDataset() {
   datasetLoading.value = true
-  setTimeout(() => {
-    const filtered = allMockModels.filter(m => m.type === 'dataset')
-    const start = (datasetPagination.page - 1) * datasetPagination.pageSize
-    datasetData.value = filtered.slice(start, start + datasetPagination.pageSize)
-    datasetPagination.total = filtered.length
-    datasetLoading.value = false
-  }, 200)
+  const { records, total } = await apiFetchModels('dataset', datasetPagination)
+  datasetData.value = records
+  datasetPagination.total = total
+  datasetLoading.value = false
 }
 
 // ---------- Tab 4: Bindings ----------
@@ -423,40 +401,45 @@ const bindingLoading = ref(false)
 const bindingData = ref<ModelBinding[]>([])
 const bindingPagination = reactive({ page: 1, pageSize: 10, total: 0 })
 
-function fetchBindings() {
+async function fetchBindings() {
   bindingLoading.value = true
-  setTimeout(() => {
-    const start = (bindingPagination.page - 1) * bindingPagination.pageSize
-    bindingData.value = allBindings.slice(start, start + bindingPagination.pageSize)
-    bindingPagination.total = allBindings.length
+  try {
+    const res = await getModelBindings({ page: bindingPagination.page, pageSize: bindingPagination.pageSize })
+    const result = res?.data || res || {}
+    bindingData.value = (result.records || result.list || result.data || []) as ModelBinding[]
+    bindingPagination.total = result.total || 0
+  } catch (e) {
+    console.error('Failed to load bindings:', e)
+    bindingData.value = []
+    bindingPagination.total = 0
+  } finally {
     bindingLoading.value = false
-  }, 200)
+  }
 }
 
 // ---------- Binding Actions ----------
 async function handleActivateBinding(row: ModelBinding) {
-  await ElMessageBox.confirm(
-    `确定要激活绑定 "${row.bindingName}" 吗？同一基础模型的旧绑定将被停用。`,
-    '激活绑定',
-    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
-  )
-  allBindings.forEach(b => {
-    if (b.baseModelId === row.baseModelId && b.status === 'active') {
-      b.status = 'inactive'
-    }
-  })
-  row.status = 'active'
-  ElMessage.success(`绑定 "${row.bindingName}" 已激活`)
-  fetchBindings()
+  try {
+    await ElMessageBox.confirm(
+      `确定要激活绑定 "${row.bindingName}" 吗？`,
+      '激活绑定',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'info' }
+    )
+    await setActiveBinding(row.id)
+    ElMessage.success(`绑定 "${row.bindingName}" 已激活`)
+    fetchBindings()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error('激活失败: ' + (e?.message || '未知错误'))
+  }
 }
 
 async function handleDeleteBinding(id: number) {
-  const idx = allBindings.findIndex(b => b.id === id)
-  if (idx >= 0) {
-    const name = allBindings[idx].bindingName
-    allBindings.splice(idx, 1)
-    ElMessage.success(`绑定 "${name}" 已删除`)
+  try {
+    await deleteModelBinding(id)
+    ElMessage.success('绑定已删除')
     fetchBindings()
+  } catch (e: any) {
+    ElMessage.error('删除失败: ' + (e?.message || '未知错误'))
   }
 }
 
@@ -478,9 +461,22 @@ const bindingRules: FormRules = {
   datasetId: [{ required: true, message: '请选择数据集', trigger: 'change' }]
 }
 
-const baseModelSelectOptions = computed(() => allMockModels.filter(m => m.type === 'base'))
-const loraSelectOptions = computed(() => allMockModels.filter(m => m.type === 'lora'))
-const datasetSelectOptions = computed(() => allMockModels.filter(m => m.type === 'dataset'))
+// Select options loaded from API
+const baseModelSelectOptions = ref<BaseModel[]>([])
+const loraSelectOptions = ref<BaseModel[]>([])
+const datasetSelectOptions = ref<BaseModel[]>([])
+
+async function loadSelectOptions() {
+  const [baseRes, loraRes, datasetRes] = await Promise.all([
+    getBaseModels({ page: 1, pageSize: 100, type: 'base' }),
+    getBaseModels({ page: 1, pageSize: 100, type: 'lora' }),
+    getBaseModels({ page: 1, pageSize: 100, type: 'dataset' }),
+  ])
+  const extract = (res: any) => res?.data?.records || res?.data?.list || res?.records || res?.list || []
+  baseModelSelectOptions.value = extract(baseRes)
+  loraSelectOptions.value = extract(loraRes)
+  datasetSelectOptions.value = extract(datasetRes)
+}
 
 function getSelectedBaseModelName() {
   const m = baseModelSelectOptions.value.find(m => m.id === bindingForm.baseModelId)
@@ -502,6 +498,7 @@ function openBindingDialog() {
   bindingForm.baseModelId = null
   bindingForm.loraAdapterId = null
   bindingForm.datasetId = null
+  loadSelectOptions()
   bindingDialogVisible.value = true
 }
 
@@ -510,30 +507,20 @@ async function handleCreateBinding() {
   const valid = await bindingFormRef.value.validate().catch(() => false)
   if (!valid) return
 
-  const baseModel = baseModelSelectOptions.value.find(m => m.id === bindingForm.baseModelId)
-  const loraModel = loraSelectOptions.value.find(m => m.id === bindingForm.loraAdapterId)
-  const datasetModel = datasetSelectOptions.value.find(m => m.id === bindingForm.datasetId)
-
-  const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
-
-  const newBinding: ModelBinding = {
-    id: bindingIdCounter++,
-    baseModelId: bindingForm.baseModelId!,
-    baseModelName: baseModel?.name || '未知',
-    loraAdapterId: bindingForm.loraAdapterId!,
-    loraAdapterName: loraModel?.name || '未知',
-    datasetId: bindingForm.datasetId!,
-    datasetName: datasetModel?.name || '未知',
-    bindingName: bindingForm.bindingName,
-    status: 'inactive',
-    createTime: now
-  }
-
-  allBindings.unshift(newBinding)
-  ElMessage.success('三元组绑定创建成功')
-  bindingDialogVisible.value = false
-  if (activeTab.value === 'bindings') {
-    fetchBindings()
+  try {
+    await createModelBinding({
+      baseModelId: bindingForm.baseModelId!,
+      loraAdapterId: bindingForm.loraAdapterId!,
+      datasetId: bindingForm.datasetId!,
+      bindingName: bindingForm.bindingName,
+    })
+    ElMessage.success('三元组绑定创建成功')
+    bindingDialogVisible.value = false
+    if (activeTab.value === 'bindings') {
+      fetchBindings()
+    }
+  } catch (e: any) {
+    ElMessage.error('创建失败: ' + (e?.message || '未知错误'))
   }
 }
 

@@ -56,3 +56,8 @@ export function getWebhookConfig() {
 export function updateWebhookConfig(data: { url: string; secret: string; enabled: boolean; events: string[] }) {
   return request.put('/metadata/export/webhook', data)
 }
+
+/** Get metadata fields filtered by group code. */
+export function getMetadataFieldsByGroup(groupCode: string) {
+  return request.get(`/metadata/fields/by-group/${groupCode}`)
+}

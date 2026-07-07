@@ -27,10 +27,14 @@ export function getDocuments(params: DocumentQuery) {
   return request.get('/documents', { params })
 }
 
-// Upload document(s) - returns upload URL and config
-export function uploadDocument(formData: FormData) {
+// Upload document(s) — supports real progress via onUploadProgress callback
+export function uploadDocument(
+  formData: FormData,
+  onUploadProgress?: (progressEvent: ProgressEvent) => void
+) {
   return request.post('/documents/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    ...(onUploadProgress ? { onUploadProgress } : {}),
   })
 }
 
@@ -47,4 +51,21 @@ export function deleteDocument(id: number) {
 // Trigger preprocessing
 export function preprocessDocument(id: number) {
   return request.post(`/documents/${id}/preprocess`)
+}
+
+// ── Document sub-resources ──
+
+/** Get document layout analysis result. */
+export function getDocumentLayout(id: number) {
+  return request.get(`/documents/${id}/layout`)
+}
+
+/** Get document OCR result. */
+export function getDocumentOcr(id: number) {
+  return request.get(`/documents/${id}/ocr`)
+}
+
+/** Get document table extraction result. */
+export function getDocumentTable(id: number) {
+  return request.get(`/documents/${id}/table`)
 }
