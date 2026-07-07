@@ -74,10 +74,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { getSettings, updateSettings } from '@/api/settings'
 
 const saveLoading = ref(false)
+const pageLoading = ref(false)
 
 const basicForm = reactive({
   siteName: 'AI Platform',
@@ -101,18 +103,85 @@ const logForm = reactive({
   logResponseResult: false
 })
 
+function applySettings(data: Record<string, any>) {
+  if (data.basic) {
+    const b = data.basic
+    if (b.siteName !== undefined) basicForm.siteName = b.siteName
+    if (b.logo !== undefined) basicForm.logo = b.logo
+    if (b.description !== undefined) basicForm.description = b.description
+    if (b.pageSize !== undefined) basicForm.pageSize = Number(b.pageSize)
+  }
+  if (data.security) {
+    const s = data.security
+    if (s.tokenExpire !== undefined) securityForm.tokenExpire = Number(s.tokenExpire)
+    if (s.maxLoginAttempts !== undefined) securityForm.maxLoginAttempts = Number(s.maxLoginAttempts)
+    if (s.minPasswordLength !== undefined) securityForm.minPasswordLength = Number(s.minPasswordLength)
+    if (s.sessionTimeout !== undefined) securityForm.sessionTimeout = Number(s.sessionTimeout)
+  }
+  if (data.log) {
+    const l = data.log
+    if (l.retentionDays !== undefined) logForm.retentionDays = Number(l.retentionDays)
+    if (l.enableOperationLog !== undefined) logForm.enableOperationLog = !!l.enableOperationLog
+    if (l.enableAgentTrace !== undefined) logForm.enableAgentTrace = !!l.enableAgentTrace
+    if (l.logRequestParams !== undefined) logForm.logRequestParams = !!l.logRequestParams
+    if (l.logResponseResult !== undefined) logForm.logResponseResult = !!l.logResponseResult
+  }
+}
+
+async function loadSettings() {
+  pageLoading.value = true
+  try {
+    const res = await getSettings()
+    const data = res?.data || res || {}
+    applySettings(data)
+  } catch {
+    // Use defaults if API unavailable
+  } finally {
+    pageLoading.value = false
+  }
+}
+
+function getCategoryData(tab: string): Record<string, any> {
+  const categoryMap: Record<string, Record<string, any>> = {
+    basic: {
+      siteName: basicForm.siteName,
+      logo: basicForm.logo,
+      description: basicForm.description,
+      pageSize: basicForm.pageSize
+    },
+    security: {
+      tokenExpire: securityForm.tokenExpire,
+      maxLoginAttempts: securityForm.maxLoginAttempts,
+      minPasswordLength: securityForm.minPasswordLength,
+      sessionTimeout: securityForm.sessionTimeout
+    },
+    log: {
+      retentionDays: logForm.retentionDays,
+      enableOperationLog: logForm.enableOperationLog,
+      enableAgentTrace: logForm.enableAgentTrace,
+      logRequestParams: logForm.logRequestParams,
+      logResponseResult: logForm.logResponseResult
+    }
+  }
+  return categoryMap[tab] || {}
+}
+
 async function handleSave(tab: string) {
   saveLoading.value = true
   try {
-    // Placeholder for actual save API
-    await new Promise(r => setTimeout(r, 500))
-    ElMessage.success(`${tab === 'basic' ? '基本' : tab === 'security' ? '安全' : '日志'}设置保存成功`)
+    await updateSettings(tab, getCategoryData(tab))
+    const labelMap: Record<string, string> = { basic: '基本', security: '安全', log: '日志' }
+    ElMessage.success(`${labelMap[tab] || tab}设置保存成功`)
   } catch {
     ElMessage.error('保存失败')
   } finally {
     saveLoading.value = false
   }
 }
+
+onMounted(() => {
+  loadSettings()
+})
 </script>
 
 <style scoped lang="scss">
