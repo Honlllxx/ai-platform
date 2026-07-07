@@ -1,6 +1,7 @@
 """Document-related ORM models."""
 
 from sqlalchemy import Column, BigInteger, String, Integer, Float, Text, DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -28,7 +29,7 @@ class DocumentLayout(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, unique=True)
     image_url = Column(String(1000))
-    regions = Column(Text, nullable=False, default="[]")
+    regions = Column(JSONB, nullable=False, default=list)
     confidence = Column(Float)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -41,7 +42,7 @@ class DocumentOcr(Base):
     total_chars = Column(Integer)
     avg_confidence = Column(Float)
     language = Column(String(20), default="ch")
-    entries = Column(Text, nullable=False, default="[]")
+    entries = Column(JSONB, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -51,6 +52,6 @@ class DocumentTable(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, unique=True)
     confidence = Column(Float)
-    original_table = Column(Text, nullable=False, default="{}")
-    extracted_table = Column(Text, nullable=False, default="{}")
+    original_table = Column(JSONB, nullable=False, default=dict)
+    extracted_table = Column(JSONB, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
