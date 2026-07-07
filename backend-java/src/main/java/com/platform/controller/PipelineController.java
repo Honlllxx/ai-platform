@@ -8,12 +8,18 @@ import com.platform.entity.pipeline.ExtractionResult;
 import com.platform.entity.pipeline.Pipeline;
 import com.platform.entity.pipeline.ReflectionResult;
 import com.platform.entity.pipeline.ValidationResult;
+import com.platform.dto.PipelineTaskMessage;
+import com.platform.entity.document.Document;
+import com.platform.mapper.document.DocumentMapper;
 import com.platform.service.AiPipelineService;
 import com.platform.service.PipelineService;
+import com.platform.service.RocketMQProducerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -24,6 +30,8 @@ public class PipelineController {
 
     private final PipelineService pipelineService;
     private final AiPipelineService aiPipelineService;
+    private final RocketMQProducerService rocketMQProducerService;
+    private final DocumentMapper documentMapper;
 
     @GetMapping
     @PreAuthorize("hasAuthority('pipeline:list')")
@@ -139,6 +147,47 @@ public class PipelineController {
             @RequestParam Long documentId,
             @RequestBody(required = false) List<Map<String, String>> metadataFields) {
         Map<String, Object> result = aiPipelineService.runPipeline(documentId, metadataFields);
+        return ApiResponse.success(result);
+    }
+
+    /**
+     * Submit pipeline task asynchronously via RocketMQ.
+     * Returns immediately — the consumer processes the pipeline in the background.
+     */
+    @PostMapping("/run-async")
+    @PreAuthorize("hasAuthority('pipeline:list')")
+    public ApiResponse<Map<String, Object>> runAsync(
+            @RequestParam Long documentId,
+            @RequestBody(required = false) List<Map<String, String>> metadataFields) {
+
+        Document doc = documentMapper.selectById(documentId);
+        if (doc == null) {
+            return ApiResponse.error(404, "文档不存在");
+        }
+
+        // Update document status
+        doc.setStatus("queued");
+        documentMapper.updateById(doc);
+
+        // Build task message
+        String taskId = UUID.randomUUID().toString();
+
+        PipelineTaskMessage task = new PipelineTaskMessage();
+        task.setDocumentId(documentId);
+        task.setTaskId(taskId);
+        task.setFileName(doc.getFileName());
+        task.setFileUrl(doc.getFileUrl());
+        task.setMetadataFields(metadataFields);
+        task.setTimestamp(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+
+        // Send to RocketMQ
+        rocketMQProducerService.submitPipelineTask(task);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("documentId", documentId);
+        result.put("taskId", taskId);
+        result.put("status", "queued");
+        result.put("message", "流水线已提交异步处理，请通过 GET /api/pipeline 查询进度");
         return ApiResponse.success(result);
     }
 }
