@@ -592,7 +592,52 @@ export function setupMock() {
       return resolve(config, ok(null))
     }
 
+    // ==================== Settings ====================
+    if (url === '/settings' && method === 'get') {
+      return resolve(config, ok({
+        basic: { siteName: 'AI Platform', logo: '', description: '智能管理平台', pageSize: 20 },
+        security: { tokenExpire: 120, maxLoginAttempts: 5, minPasswordLength: 6, sessionTimeout: 30 },
+        log: { retentionDays: 90, enableOperationLog: true, enableAgentTrace: true, logRequestParams: true, logResponseResult: false }
+      }))
+    }
+
+    if (url.match(/^\/settings\/\w+$/)) {
+      const category = url.split('/').pop()!
+      const defaults: Record<string, any> = {
+        basic: { siteName: 'AI Platform', logo: '', description: '智能管理平台', pageSize: 20 },
+        security: { tokenExpire: 120, maxLoginAttempts: 5, minPasswordLength: 6, sessionTimeout: 30 },
+        log: { retentionDays: 90, enableOperationLog: true, enableAgentTrace: true, logRequestParams: true, logResponseResult: false }
+      }
+      if (method === 'get') {
+        return resolve(config, ok(defaults[category] || {}))
+      }
+      if (method === 'put') {
+        return resolve(config, ok({ ...defaults[category], ...body }))
+      }
+    }
+
     // ==================== Review ====================
+    if (url === '/review' && method === 'post') {
+      const newReview = {
+        id: reviews.length + 1,
+        documentId: body.documentId || 1,
+        pipelineId: body.pipelineId || null,
+        documentType: body.documentType || 'contract',
+        documentName: '文档_' + (body.documentId || 1),
+        reviewerId: body.reviewerId || 1,
+        reviewer: 'admin',
+        status: 'pending',
+        totalFields: 0,
+        reviewedFields: 0,
+        approvedFields: 0,
+        rejectedFields: 0,
+        createTime: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        updateTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
+      }
+      reviews.unshift(newReview as any)
+      return resolve(config, ok({ id: newReview.id, status: newReview.status }))
+    }
+
     if (url === '/review' && method === 'get') {
       let list = [...reviews]
       if (query.status) list = list.filter(r => r.status === query.status)
@@ -801,8 +846,8 @@ export function setupMock() {
       return resolve(config, ok(newTask))
     }
 
-    if (url.match(/^\/finetune\/tasks\/\d+\/cancel$/) && method === 'post') {
-      const id = Number(url.split('/')[url.split('/').length - 2])
+    if (url.match(/^\/finetune\/tasks\/\d+$/) && method === 'delete') {
+      const id = Number(url.split('/').pop())
       const task = finetuneTasks.find(t => t.id === id)
       if (task && (task.status === 'pending' || task.status === 'running')) task.status = 'cancelled'
       return resolve(config, ok({ message: '任务已取消' }))
