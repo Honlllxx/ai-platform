@@ -1,30 +1,20 @@
-"""Table detection and structure reconstruction service."""
+"""Table detection and structure reconstruction service.
+
+Uses the shared PPStructureV3 singleton from ``model_loader`` so layout and
+table analysis share one model instance.
+"""
 
 import numpy as np
-import json
+
+from app.services.model_loader import model_loader
 
 
 class TableService:
     """Table detection using PaddleOCR's table model."""
 
-    def __init__(self):
-        self._engine = None
-
-    @property
-    def engine(self):
-        """Lazy-load PaddleOCR table engine."""
-        if self._engine is None:
-            from paddleocr import PPStructureV3
-            from app.config import get_settings
-            settings = get_settings()
-            self._engine = PPStructureV3(
-                lang=settings.ocr_lang,
-            )
-        return self._engine
-
     def extract_tables(self, image: np.ndarray) -> list[dict]:
         """Extract tables from image. Returns structured table data."""
-        result = self.engine.predict(image, use_table_recognition=True)
+        result = model_loader.predict(image, use_table_recognition=True)
 
         tables = []
         for block in result:
