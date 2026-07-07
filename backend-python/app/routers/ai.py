@@ -6,10 +6,12 @@ from io import BytesIO
 
 import cv2
 import numpy as np
-from fastapi import APIRouter, UploadFile, File, Query, HTTPException
+from fastapi import APIRouter, UploadFile, File, Query, HTTPException, Depends
 from PIL import Image
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.common import ApiResponse
+from app.database import get_db
 from app.services.preprocess_service import preprocess_service
 from app.services.ocr_service import ocr_service
 from app.services.layout_service import layout_service
@@ -88,6 +90,8 @@ async def ai_table(file: UploadFile = File(...)):
 async def ai_pipeline_run(
     file: UploadFile = File(...),
     metadata_fields: str = Query(default="[]", description="JSON encoded list of field definitions"),
+    document_id: int = Query(default=None, description="Document ID for DB persistence"),
+    db: AsyncSession = Depends(get_db),
 ):
     """Run the full AI processing pipeline on an uploaded document."""
     image = await read_image_from_upload(file)
@@ -100,6 +104,8 @@ async def ai_pipeline_run(
     result = await pipeline_service.run_full_pipeline(
         image=image,
         metadata_fields=fields,
+        document_id=document_id,
+        db=db,
     )
 
     if result["status"] == "failed":
