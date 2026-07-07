@@ -14,6 +14,7 @@ import com.platform.mapper.pipeline.ExtractionResultMapper;
 import com.platform.mapper.pipeline.PipelineMapper;
 import com.platform.mapper.pipeline.ReflectionResultMapper;
 import com.platform.mapper.pipeline.ValidationResultMapper;
+import com.platform.service.AiPipelineService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -31,6 +32,7 @@ public class PipelineController {
     private final ValidationResultMapper validationResultMapper;
     private final ReflectionResultMapper reflectionResultMapper;
     private final DocumentMapper documentMapper;
+    private final AiPipelineService aiPipelineService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('pipeline:list')")
@@ -157,5 +159,14 @@ public class PipelineController {
         }).collect(Collectors.toList()));
 
         return ApiResponse.success(map);
+    }
+
+    @PostMapping("/run")
+    @PreAuthorize("hasAuthority('pipeline:list')")
+    public ApiResponse<Map<String, Object>> run(
+            @RequestParam Long documentId,
+            @RequestBody(required = false) List<Map<String, String>> metadataFields) {
+        Map<String, Object> result = aiPipelineService.runPipeline(documentId, metadataFields);
+        return ApiResponse.success(result);
     }
 }
