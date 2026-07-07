@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir "paddlex[ocr]"
 
 COPY . .
 
+# Disable ONEDNN to avoid PaddlePaddle CPU compatibility issues
+ENV FLAGS_use_onednn=0
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
