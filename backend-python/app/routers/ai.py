@@ -20,7 +20,14 @@ from app.services.layout_service import layout_service
 from app.services.table_service import table_service
 from app.services.pipeline_service import pipeline_service
 from app.services.graph_service import graph_service
-from app.services.document_converter import document_converter
+from app.services.document_converter import (
+    document_converter,
+    ConversionError,
+    UnsupportedFormatError,
+    FileTooLargeError,
+    EmptyFileError,
+    CorruptedFileError,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -32,6 +39,16 @@ JAVA_TYPE_MAP = {
     "word": "word",
     "doc": "word",
     "docx": "word",
+    "excel": "excel",
+    "xls": "excel",
+    "xlsx": "excel",
+    "html": "html",
+    "htm": "html",
+    "text": "text",
+    "txt": "text",
+    "csv": "text",
+    "md": "text",
+    "rtf": "rtf",
 }
 
 
@@ -41,20 +58,41 @@ async def read_pages_from_upload(
 ) -> tuple[list[np.ndarray], dict]:
     """Read an uploaded file into a list of BGR page images.
 
-    Uses DocumentConverter to handle PDF, Word, and image formats.
+    Uses DocumentConverter to handle PDF, Word, Excel, HTML, image, and text formats.
+    File type is determined by (in priority order):
+      1. Explicit file_type parameter (from Java)
+      2. Filename extension
+      3. Magic bytes auto-detection (inside DocumentConverter)
     """
     contents = await file.read()
     if not contents:
         raise HTTPException(status_code=400, detail="文件为空")
 
-    # Map Java file_type to converter type
-    ft = JAVA_TYPE_MAP.get((file_type or "").lower(), "image")
+    filename = file.filename or ""
 
-    pages, meta = document_converter.convert(contents, ft, file.filename or "")
-    if not pages:
+    # Map Java file_type to converter type, with extension fallback
+    ft = (file_type or "").lower().strip()
+    ft = JAVA_TYPE_MAP.get(ft)
+
+    # If the mapped type is still None or "image", try filename extension
+    if ft is None or ft == "image":
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        ext_type = JAVA_TYPE_MAP.get(ext)
+        if ext_type and ext_type != "image":
+            logger.info("File type inferred from extension: '%s' → '%s' (original file_type='%s')",
+                        ext, ext_type, file_type)
+            ft = ext_type
+        elif ft is None:
+            ft = "image"
+
+    logger.info("read_pages_from_upload: filename=%s, file_type=%s, resolved_type=%s",
+                filename, file_type, ft)
+
+    result = document_converter.convert(contents, ft, filename)
+    if not result.pages:
         raise HTTPException(status_code=400, detail="无法解析文件：未能提取任何页面")
 
-    return pages, meta
+    return result.pages, result.to_legacy_meta()
 
 
 # ── Single-step endpoints (image-only for now, per-page) ──
@@ -89,19 +127,28 @@ async def ai_preprocess(
         })
     except HTTPException:
         raise
+    except EmptyFileError as e:
+        return ApiResponse.error(code=400, message=str(e), data={"error": str(e)})
+    except FileTooLargeError as e:
+        return ApiResponse.error(code=413, message=str(e), data={"error": str(e)})
+    except UnsupportedFormatError as e:
+        return ApiResponse.error(code=415, message=str(e), data={"error": str(e)})
+    except ConversionError as e:
+        return ApiResponse.error(code=400, message=f"文件转换失败: {e}", data={"error": str(e)})
     except Exception as e:
-        logger.exception("preprocess failed — unhandled error: %s", e)
+        logger.exception("preprocess failed — unhandled error: file=%s type=%s exc=%s: %s",
+                         file.filename, file_type, type(e).__name__, e)
         return ApiResponse.error(
             code=400,
-            message=f"无法解析文件: {file.filename}，请确认文件格式正确",
-            data={"shape": [0, 0], "metadata": {"error": str(e)}},
+            message=f"文件预处理失败: {e}",
+            data={"error": str(e), "error_type": type(e).__name__},
         )
 
 
 @router.post("/ocr")
 async def ai_ocr(
     file: UploadFile = File(...),
-    file_type: str = Query(default="image", description="File type: image, pdf, word"),
+    file_type: str = Form(default="image", description="File type: image, pdf, word"),
 ):
     """Run OCR on an uploaded document. Supports all file types."""
     pages, _ = await read_pages_from_upload(file, file_type)
@@ -126,7 +173,7 @@ async def ai_ocr(
 @router.post("/layout")
 async def ai_layout(
     file: UploadFile = File(...),
-    file_type: str = Query(default="image", description="File type: image, pdf, word"),
+    file_type: str = Form(default="image", description="File type: image, pdf, word"),
 ):
     """Run layout analysis on an uploaded document. Supports all file types."""
     pages, _ = await read_pages_from_upload(file, file_type)
@@ -144,7 +191,7 @@ async def ai_layout(
 @router.post("/table")
 async def ai_table(
     file: UploadFile = File(...),
-    file_type: str = Query(default="image", description="File type: image, pdf, word"),
+    file_type: str = Form(default="image", description="File type: image, pdf, word"),
 ):
     """Extract tables from an uploaded document. Supports all file types."""
     pages, _ = await read_pages_from_upload(file, file_type)
@@ -178,12 +225,21 @@ async def ai_pipeline_run(
         pages, conv_meta = await read_pages_from_upload(file, file_type)
     except HTTPException:
         raise
+    except EmptyFileError as e:
+        return ApiResponse.error(code=400, message=str(e), data={"error": str(e)})
+    except FileTooLargeError as e:
+        return ApiResponse.error(code=413, message=str(e), data={"error": str(e)})
+    except UnsupportedFormatError as e:
+        return ApiResponse.error(code=415, message=str(e), data={"error": str(e)})
+    except ConversionError as e:
+        return ApiResponse.error(code=400, message=f"文件转换失败: {e}", data={"error": str(e)})
     except Exception as e:
-        logger.exception("pipeline failed — cannot read uploaded file")
+        logger.exception("pipeline failed — cannot read uploaded file: file=%s type=%s exc=%s: %s",
+                         file.filename, file_type, type(e).__name__, e)
         return ApiResponse.error(
             code=400,
-            message=f"无法解析文件: {file.filename}，请确认文件格式正确",
-            data={"error": str(e)},
+            message=f"文件读取失败: {e}",
+            data={"error": str(e), "error_type": type(e).__name__},
         )
 
     try:
@@ -229,7 +285,25 @@ async def ai_pipeline_graph(
 
     Supports all file types via DocumentConverter.
     """
-    pages, conv_meta = await read_pages_from_upload(file, file_type)
+    try:
+        pages, conv_meta = await read_pages_from_upload(file, file_type)
+    except HTTPException:
+        raise
+    except EmptyFileError as e:
+        return ApiResponse.error(code=400, message=str(e), data={"error": str(e)})
+    except FileTooLargeError as e:
+        return ApiResponse.error(code=413, message=str(e), data={"error": str(e)})
+    except UnsupportedFormatError as e:
+        return ApiResponse.error(code=415, message=str(e), data={"error": str(e)})
+    except ConversionError as e:
+        return ApiResponse.error(code=400, message=f"文件转换失败: {e}", data={"error": str(e)})
+    except Exception as e:
+        logger.exception("graph pipeline failed — cannot read uploaded file")
+        return ApiResponse.error(
+            code=400,
+            message=f"无法解析文件: {file.filename}",
+            data={"error": str(e)},
+        )
 
     try:
         fields = json.loads(metadata_fields)
