@@ -35,8 +35,8 @@ class PipelineGraphState(dict):
     """Mutable dict-based state shared across all graph nodes.
 
     Keys:
-        image, metadata_fields, document_id, task_id,
-        processed_image, preprocess_meta,
+        pages, metadata_fields, document_id, task_id,
+        processed_pages, preprocess_meta,
         layout_regions, layout_error,
         ocr_entries, ocr_text, ocr_total_chars, ocr_avg_confidence,
         tables, table_error,
@@ -80,75 +80,94 @@ class PipelineGraph:
     async def node_route(self, state: PipelineGraphState) -> PipelineGraphState:
         """Entry-point node: preprocess + layout + OCR + table extraction.
 
-        All four stages run here as a sequential pre-processing pipeline
-        before the LLM chain begins.
+        All four stages run per-page before the LLM chain begins.
         """
         state["current_step"] = "preprocess"
         state["progress_pct"] = 5
-        state["progress_message"] = "开始预处理..."
+
+        pages = state["pages"]
+        page_count = len(pages)
+        state["progress_message"] = f"开始预处理（共 {page_count} 页）..."
         await self._update_pipeline_db(state, "preprocess", 1)
 
-        image = state["image"]
-
-        # Preprocess
-        processed, preprocess_meta = await asyncio.to_thread(
-            preprocess_service.process, image
-        )
-        state["processed_image"] = processed
-        state["preprocess_meta"] = preprocess_meta
+        # Preprocess (per page)
+        processed_pages: list[np.ndarray] = []
+        preprocess_meta_list = []
+        for page_idx, page_img in enumerate(pages):
+            proc, meta = await asyncio.to_thread(
+                preprocess_service.process, page_img
+            )
+            processed_pages.append(proc)
+            meta["page"] = page_idx + 1
+            preprocess_meta_list.append(meta)
+        state["processed_pages"] = processed_pages
+        state["preprocess_meta"] = preprocess_meta_list
         state["progress_pct"] = 15
-        state["progress_message"] = "预处理完成"
-        state["timeline"].append({"stage": "preprocess", "status": "done"})
+        state["progress_message"] = f"预处理完成（{page_count} 页）"
+        state["timeline"].append({"stage": "preprocess", "status": "done", "pages": page_count})
         await self._update_pipeline_db(state, "layout", 2)
 
-        # Layout
-        try:
-            regions = await asyncio.to_thread(layout_service.analyze, processed)
-        except Exception as e:
-            state["layout_regions"] = []
-            state["layout_error"] = str(e)
-            state["timeline"].append({"stage": "layout", "status": "skipped", "error": str(e)})
-        else:
-            state["layout_regions"] = regions
-            state["timeline"].append({"stage": "layout", "status": "done", "regions": len(regions)})
-
+        # Layout (per page)
+        all_regions = []
+        for page_idx, proc in enumerate(processed_pages):
+            try:
+                regions = await asyncio.to_thread(layout_service.analyze, proc)
+            except Exception as e:
+                state["timeline"].append({"stage": "layout", "status": "skipped",
+                                          "page": page_idx + 1, "error": str(e)})
+            else:
+                for r in regions:
+                    r["page"] = page_idx + 1
+                all_regions.extend(regions)
+        state["layout_regions"] = all_regions
         state["progress_pct"] = 30
-        state["progress_message"] = "版面分析完成"
+        state["progress_message"] = f"版面分析完成，检测到 {len(all_regions)} 个区域"
+        state["timeline"].append({"stage": "layout", "status": "done",
+                                  "pages": page_count, "regions": len(all_regions)})
         await self._update_pipeline_db(state, "ocr", 3)
 
         # Persist layout
         await self._persist_layout(state)
 
-        # OCR
-        ocr_entries = await asyncio.to_thread(ocr_service.recognize, processed)
+        # OCR (per page, with page annotations)
+        ocr_entries = []
+        for page_idx, proc in enumerate(processed_pages):
+            entries = await asyncio.to_thread(ocr_service.recognize, proc)
+            for e in entries:
+                e["page"] = page_idx + 1
+            ocr_entries.extend(entries)
+
         state["ocr_entries"] = ocr_entries
         state["ocr_total_chars"] = sum(len(e["text"]) for e in ocr_entries)
         state["ocr_avg_confidence"] = (
             sum(e["confidence"] for e in ocr_entries) / len(ocr_entries)
             if ocr_entries else 0
         )
-        state["ocr_text"] = "\n".join(e["text"] for e in ocr_entries)
+        state["ocr_text"] = self._build_page_ocr_text(ocr_entries)
         state["progress_pct"] = 50
-        state["progress_message"] = f"OCR 完成，识别到 {len(ocr_entries)} 条文本"
-        state["timeline"].append({"stage": "ocr", "status": "done", "entries": len(ocr_entries)})
+        state["progress_message"] = f"OCR 完成，识别到 {len(ocr_entries)} 条文本（{page_count} 页）"
+        state["timeline"].append({"stage": "ocr", "status": "done", "entries": len(ocr_entries), "pages": page_count})
         await self._update_pipeline_db(state, "table", 4)
 
         # Persist OCR
         await self._persist_ocr(state)
 
-        # Table
-        try:
-            tables = await asyncio.to_thread(table_service.extract_tables, processed)
-        except Exception as e:
-            state["tables"] = []
-            state["table_error"] = str(e)
-            state["timeline"].append({"stage": "table", "status": "skipped", "error": str(e)})
-        else:
-            state["tables"] = tables
-            state["timeline"].append({"stage": "table", "status": "done", "tables": len(tables)})
-
+        # Table (per page)
+        all_tables = []
+        for page_idx, proc in enumerate(processed_pages):
+            try:
+                tables = await asyncio.to_thread(table_service.extract_tables, proc)
+            except Exception as e:
+                state["timeline"].append({"stage": "table", "status": "skipped",
+                                          "page": page_idx + 1, "error": str(e)})
+            else:
+                for t in tables:
+                    t["page"] = page_idx + 1
+                all_tables.extend(tables)
+        state["tables"] = all_tables
         state["progress_pct"] = 60
-        state["progress_message"] = "表格提取完成"
+        state["progress_message"] = f"表格提取完成，检测到 {len(all_tables)} 个表格"
+        state["timeline"].append({"stage": "table", "status": "done", "tables": len(all_tables)})
         await self._update_pipeline_db(state, "extract", 5)
 
         # Persist tables
@@ -307,7 +326,7 @@ class PipelineGraph:
 
     async def run(
         self,
-        image: np.ndarray,
+        pages: list[np.ndarray],
         metadata_fields: Optional[list[dict]] = None,
         document_id: Optional[int] = None,
         db=None,  # AsyncSession
@@ -325,7 +344,7 @@ class PipelineGraph:
 
         # Create initial state
         state = PipelineGraphState(
-            image=image,
+            pages=pages,
             metadata_fields=metadata_fields or [],
             document_id=document_id,
             task_id=task_id,
@@ -366,6 +385,7 @@ class PipelineGraph:
             "task_id": task_id,
             "status": state.get("status", "failed"),
             "duration": duration,
+            "page_count": len(pages),
             "preprocess": state.get("preprocess_meta", {}),
             "layout": {"regions": state.get("layout_regions", [])},
             "ocr": {
@@ -393,7 +413,7 @@ class PipelineGraph:
         if not metadata_fields:
             return []
 
-        ocr_text = "\n".join(e["text"] for e in ocr_entries)
+        ocr_text = self._build_page_ocr_text(ocr_entries)
 
         field_lines = []
         for f in metadata_fields[:30]:
@@ -438,6 +458,20 @@ class PipelineGraph:
             return extraction_list
         except Exception:
             return []
+
+    @staticmethod
+    def _build_page_ocr_text(ocr_entries: list[dict]) -> str:
+        """Build OCR text with [Page N] markers for multi-page documents."""
+        page_groups: dict[int, list[str]] = {}
+        for e in ocr_entries:
+            pg = e.get("page", 1)
+            page_groups.setdefault(pg, []).append(e["text"])
+
+        parts = []
+        for pg in sorted(page_groups):
+            parts.append(f"\n[Page {pg}]\n")
+            parts.append("\n".join(page_groups[pg]))
+        return "\n".join(parts)
 
     # ═══════════════════════════════════════════════════════════
     # Private: DB persistence (delegates to SQLAlchemy)
