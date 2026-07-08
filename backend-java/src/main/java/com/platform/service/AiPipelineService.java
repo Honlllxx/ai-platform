@@ -7,6 +7,7 @@ import com.platform.entity.document.DocumentOcr;
 import com.platform.entity.document.DocumentTable;
 import com.platform.entity.pipeline.ExtractionResult;
 import com.platform.entity.pipeline.Pipeline;
+import com.platform.entity.pipeline.ReflectionResult;
 import com.platform.entity.pipeline.ValidationResult;
 import com.platform.mapper.document.DocumentLayoutMapper;
 import com.platform.mapper.document.DocumentMapper;
@@ -14,6 +15,7 @@ import com.platform.mapper.document.DocumentOcrMapper;
 import com.platform.mapper.document.DocumentTableMapper;
 import com.platform.mapper.pipeline.ExtractionResultMapper;
 import com.platform.mapper.pipeline.PipelineMapper;
+import com.platform.mapper.pipeline.ReflectionResultMapper;
 import com.platform.mapper.pipeline.ValidationResultMapper;
 import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
@@ -50,6 +52,7 @@ public class AiPipelineService {
     private final PipelineMapper pipelineMapper;
     private final ExtractionResultMapper extractionResultMapper;
     private final ValidationResultMapper validationResultMapper;
+    private final ReflectionResultMapper reflectionResultMapper;
     private final MinioClient minioClient;
     private final MinioConfig minioConfig;
 
@@ -124,7 +127,7 @@ public class AiPipelineService {
         pipeline.setTaskId(java.util.UUID.randomUUID().toString());
         pipeline.setStatus("running");
         pipeline.setCurrentStep("preprocess");
-        pipeline.setTotalSteps(5);
+        pipeline.setTotalSteps(7);
         pipeline.setCompletedSteps(0);
         pipeline.setStartedAt(LocalDateTime.now());
         pipelineMapper.insert(pipeline);
@@ -138,11 +141,17 @@ public class AiPipelineService {
 
             Map<String, Object> aiResult = callAiPipeline(fileBytes, filename, metadataFields, documentId, doc.getFileType());
 
+            // Build state graph from the pipeline timeline
+            String stateGraph = buildStateGraph(aiResult);
+            pipeline.setStateGraph(stateGraph);
+
             // Persist results
             persistLayoutResult(pipeline.getId(), (Map<String, Object>) aiResult.get("layout"));
             persistOcrResult(pipeline.getId(), (Map<String, Object>) aiResult.get("ocr"));
             persistTableResults(pipeline.getId(), (List<Map<String, Object>>) aiResult.get("tables"));
             persistExtractionResults(pipeline.getId(), (List<Map<String, Object>>) aiResult.get("extraction"));
+            persistValidationResults(pipeline.getId(), (List<Map<String, Object>>) aiResult.get("validations"));
+            persistReflectionResults(pipeline.getId(), (List<Map<String, Object>>) aiResult.get("reflections"));
 
             // Update page count from pipeline result
             if (aiResult.get("page_count") instanceof Number pc) {
@@ -151,8 +160,8 @@ public class AiPipelineService {
 
             // Update pipeline status
             pipeline.setStatus("completed");
-            pipeline.setCurrentStep("extract");
-            pipeline.setCompletedSteps(5);
+            pipeline.setCurrentStep("reflect");
+            pipeline.setCompletedSteps(7);
             pipeline.setFinishedAt(LocalDateTime.now());
             if (aiResult.get("duration") instanceof Number duration) {
                 pipeline.setDuration(duration.doubleValue());
@@ -230,6 +239,9 @@ public class AiPipelineService {
             } catch (Exception ignored) {}
         }
 
+        // Ensure fileType is never null/empty — fallback to extension detection
+        String resolvedFileType = resolveFileType(fileType, filename);
+
         String url = aiClientConfig.getBaseUrl() + "/api/ai/pipeline/run";
 
         HttpHeaders headers = new HttpHeaders();
@@ -244,27 +256,81 @@ public class AiPipelineService {
         });
         body.add("metadata_fields", fieldsJson);
         body.add("document_id", String.valueOf(documentId));
-        body.add("file_type", fileType != null ? fileType : "image");
+        body.add("file_type", resolvedFileType);
 
         HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
 
-        log.info("Calling Python AI: POST {} (metadataFields={}, fileType={})", url,
-                metadataFields != null ? metadataFields.size() : 0, fileType);
+        log.info("Calling Python AI: POST {} (metadataFields={}, fileType={}, resolvedFileType={}, filename={})",
+                url, metadataFields != null ? metadataFields.size() : 0, fileType, resolvedFileType, filename);
         try {
             ResponseEntity<Map> response = aiRestTemplate.exchange(url, HttpMethod.POST, request, Map.class);
             log.info("Python AI responded: status={}", response.getStatusCode());
 
             Map<String, Object> responseBody = response.getBody();
-            if (responseBody != null && responseBody.containsKey("data")) {
+            if (responseBody == null) {
+                throw new RuntimeException("Python AI returned empty response");
+            }
+
+            // Check API-level error (code != 0/200)
+            Object code = responseBody.get("code");
+            if (code instanceof Number && ((Number) code).intValue() != 0
+                    && ((Number) code).intValue() != 200) {
+                String message = String.valueOf(responseBody.getOrDefault("message", "Unknown error"));
+                log.error("Python AI returned error code={}, message={}", code, message);
+                throw new RuntimeException("AI处理失败: " + message);
+            }
+
+            if (responseBody.containsKey("data")) {
                 Map<String, Object> data = (Map<String, Object>) responseBody.get("data");
                 log.info("Python AI result keys: {}", data.keySet());
+
+                // Check if the AI returned a business error
+                if (data.containsKey("error") && !data.containsKey("extraction")) {
+                    String error = String.valueOf(data.get("error"));
+                    log.error("Python AI pipeline returned error: {}", error);
+                    throw new RuntimeException("AI处理失败: " + error);
+                }
+
                 return data;
             }
-            return responseBody != null ? responseBody : Collections.emptyMap();
+            return responseBody;
         } catch (Exception e) {
             log.error("Python AI call failed — url={}, error={}", url, e.getMessage(), e);
             throw e;
         }
+    }
+
+    /**
+     * Resolve file type with fallback to filename extension.
+     * Ensures file_type is always a valid value (image/pdf/word/excel/html/text).
+     */
+    private String resolveFileType(String fileType, String filename) {
+        // Use explicit type if valid
+        if (fileType != null && !fileType.isBlank()) {
+            String ft = fileType.toLowerCase().trim();
+            if (ft.matches("image|pdf|word|excel|html|text|rtf")) {
+                return ft;
+            }
+        }
+
+        // Fallback: detect from filename extension
+        if (filename != null && filename.contains(".")) {
+            String ext = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+            return switch (ext) {
+                case "pdf" -> "pdf";
+                case "doc", "docx" -> "word";
+                case "xls", "xlsx" -> "excel";
+                case "html", "htm" -> "html";
+                case "txt", "csv", "md", "log" -> "text";
+                case "rtf" -> "rtf";
+                case "jpg", "jpeg", "png", "bmp", "tiff", "tif", "webp", "gif" -> "image";
+                default -> "image";
+            };
+        }
+
+        log.warn("Unable to resolve file type for file='{}', fileType='{}'; defaulting to 'image'",
+                filename, fileType);
+        return "image";
     }
 
     // ==================== Private: MinIO Download ====================
@@ -398,6 +464,91 @@ public class AiPipelineService {
             }
 
             extractionResultMapper.insert(result);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void persistValidationResults(Long pipelineId, List<Map<String, Object>> validations) {
+        if (validations == null || validations.isEmpty()) return;
+
+        for (Map<String, Object> v : validations) {
+            ValidationResult result = new ValidationResult();
+            result.setPipelineId(pipelineId);
+            result.setFieldName(String.valueOf(v.getOrDefault("field_name", v.getOrDefault("field", ""))));
+            result.setRule(String.valueOf(v.getOrDefault("rule", "")));
+            result.setSeverity(String.valueOf(v.getOrDefault("severity", "info")));
+            result.setMessage(String.valueOf(v.getOrDefault("message", "")));
+            result.setSuggestion(String.valueOf(v.getOrDefault("suggestion", "")));
+            validationResultMapper.insert(result);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void persistReflectionResults(Long pipelineId, List<Map<String, Object>> reflections) {
+        if (reflections == null || reflections.isEmpty()) return;
+
+        for (Map<String, Object> r : reflections) {
+            ReflectionResult result = new ReflectionResult();
+            result.setPipelineId(pipelineId);
+            result.setFieldName(String.valueOf(r.getOrDefault("field_name", r.getOrDefault("field", ""))));
+            result.setBeforeValue(String.valueOf(r.getOrDefault("before_value", r.getOrDefault("beforeValue", ""))));
+            result.setAfterValue(String.valueOf(r.getOrDefault("after_value", r.getOrDefault("afterValue", ""))));
+            result.setReason(String.valueOf(r.getOrDefault("reason", "")));
+            reflectionResultMapper.insert(result);
+        }
+    }
+
+    /**
+     * Build a state graph JSON from the pipeline timeline.
+     * The graph shows nodes (stages) and edges (transitions) for frontend visualization.
+     */
+    private String buildStateGraph(Map<String, Object> aiResult) {
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        List<Map<String, Object>> edges = new ArrayList<>();
+
+        // Define the 7 pipeline stages
+        String[] stages = {"preprocess", "layout", "ocr", "table", "extract", "validate", "reflect"};
+        String[] labels = {"预处理", "版面分析", "OCR识别", "表格提取", "字段提取", "数据校验", "反思修正"};
+
+        // Check timeline for stage statuses
+        Object timelineObj = aiResult.get("timeline");
+        Map<String, String> stageStatus = new LinkedHashMap<>();
+        if (timelineObj instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> timeline = (List<Map<String, Object>>) timelineObj;
+            for (Map<String, Object> entry : timeline) {
+                String stage = String.valueOf(entry.getOrDefault("stage", ""));
+                String status = String.valueOf(entry.getOrDefault("status", "done"));
+                stageStatus.put(stage, status);
+            }
+        }
+
+        for (int i = 0; i < stages.length; i++) {
+            String stage = stages[i];
+            String status = stageStatus.getOrDefault(stage, "pending");
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("id", stage);
+            node.put("label", labels[i]);
+            node.put("status", status);
+            nodes.add(node);
+
+            if (i > 0) {
+                Map<String, Object> edge = new LinkedHashMap<>();
+                edge.put("from", stages[i - 1]);
+                edge.put("to", stage);
+                edges.add(edge);
+            }
+        }
+
+        Map<String, Object> graph = new LinkedHashMap<>();
+        graph.put("nodes", nodes);
+        graph.put("edges", edges);
+
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(graph);
+        } catch (Exception e) {
+            log.warn("Failed to serialize stateGraph", e);
+            return "{}";
         }
     }
 }
