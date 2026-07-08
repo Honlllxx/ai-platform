@@ -1,6 +1,7 @@
 package com.platform.entity.document;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.platform.handler.JsonbTypeHandler;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -13,6 +14,7 @@ public class DocumentOcr {
     private Integer totalChars;
     private Double avgConfidence;
     private String language;
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String entries;
 
     @TableField(fill = FieldFill.INSERT)
