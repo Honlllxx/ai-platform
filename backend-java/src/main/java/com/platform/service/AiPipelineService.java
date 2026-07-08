@@ -58,11 +58,31 @@ public class AiPipelineService {
     /**
      * Send document to Python AI for preprocessing (deskew + stamp removal).
      */
+    /** Image file extensions that support OpenCV preprocessing. */
+    private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "bmp", "tiff", "tif", "webp");
+
     @SuppressWarnings("unchecked")
     public Map<String, Object> preprocessDocument(Long documentId) {
         Document doc = documentMapper.selectById(documentId);
         if (doc == null) {
             throw new RuntimeException("Document not found: " + documentId);
+        }
+
+        // Check if file type supports image preprocessing
+        String fileType = doc.getFileType();
+        if (fileType == null || !IMAGE_EXTENSIONS.contains(fileType.toLowerCase())) {
+            log.info("Preprocess skipped for document {} — file type '{}' is not an image, marking as preprocessed directly",
+                    documentId, fileType);
+
+            doc.setStatus("preprocessed");
+            documentMapper.updateById(doc);
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("id", documentId);
+            response.put("status", "preprocessed");
+            response.put("message", "预处理完成（非图片文件，跳过图像预处理）");
+            response.put("aiResult", Map.of("shape", List.of(0, 0), "metadata", Map.of("note", "skipped — not an image file")));
+            return response;
         }
 
         // Update status
@@ -75,12 +95,12 @@ public class AiPipelineService {
 
             Map<String, Object> result = callAiPreprocess(fileBytes, filename);
 
-            doc.setStatus("pending");
+            doc.setStatus("preprocessed");
             documentMapper.updateById(doc);
 
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("id", documentId);
-            response.put("status", "pending");
+            response.put("status", "preprocessed");
             response.put("message", "预处理完成");
             response.put("aiResult", result);
             return response;
