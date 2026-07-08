@@ -193,6 +193,17 @@ class ConverterConfig:
         "zip_based": b"PK\x03\x04",  # docx, xlsx are ZIP archives
     })
 
+    # 图片格式对应的 magic bytes 与扩展名（用于自动检测）
+    IMAGE_MAGIC_BYTES: Tuple[Tuple[bytes, str], ...] = (
+        (b"\xff\xd8\xff", "jpg"),        # JPEG
+        (b"\x89PNG\r\n\x1a\n", "png"),   # PNG
+        (b"GIF8", "gif"),                # GIF
+        (b"BM", "bmp"),                  # BMP
+        (b"II*\x00", "tiff"),            # TIFF (little-endian)
+        (b"MM\x00*", "tiff"),            # TIFF (big-endian)
+        (b"RIFF", "webp"),               # WebP
+    )
+
 
 # =============================================================================
 # Main Converter Class
@@ -259,10 +270,14 @@ class DocumentConverter:
         if validate:
             self._validate(file_bytes, filename)
 
-        # 2. Normalize file type
+        # 2. Normalize file type (from parameter + extension)
         ft = self._normalize_type(file_type, filename)
 
-        # 3. Route to converter
+        # 3. Auto-detect and correct file type mismatch (defense in depth)
+        detected = self._detect_file_type_from_bytes(file_bytes, filename)
+        ft = self._validate_file_type_mismatch(ft, detected, filename)
+
+        # 4. Route to converter
         try:
             self._dispatch(ft, file_bytes, filename, result, progress_callback)
         except ConversionError:
@@ -312,6 +327,90 @@ class DocumentConverter:
             return True
         except Exception:
             return False
+
+    @classmethod
+    def _detect_file_type_from_bytes(cls, file_bytes: bytes, filename: str = "") -> str:
+        """通过 magic bytes 自动检测文件实际类型。
+
+        返回内部类型名: image / pdf / word / excel / text / rtf / html / unknown
+        优先使用 magic bytes，其次使用文件名扩展名。
+        """
+        if not file_bytes:
+            return "unknown"
+
+        # 1. Magic bytes 检测
+        # PDF: %PDF
+        if file_bytes[:4] == b"%PDF":
+            return "pdf"
+
+        # ZIP-based: docx, xlsx 都是 ZIP 包
+        if file_bytes[:4] == b"PK\x03\x04":
+            if filename:
+                ext = Path(filename).suffix.lower().lstrip(".")
+                if ext in ("docx", "doc"):
+                    return "word"
+                if ext in ("xlsx", "xls"):
+                    return "excel"
+            return "zip_based"  # 无法确定是 word 还是 excel
+
+        # 图片格式
+        for magic, fmt in cls.config.IMAGE_MAGIC_BYTES:
+            if file_bytes[:len(magic)] == magic:
+                return "image"
+
+        # 2. 扩展名回退
+        if filename:
+            ext = Path(filename).suffix.lower().lstrip(".")
+            if ext in cls._EXTENSION_MAP:
+                return cls._EXTENSION_MAP[ext]
+
+        # 3. 文本检测（尝试 UTF-8 解码）
+        try:
+            text = file_bytes[:4096].decode("utf-8")
+            if text.strip().startswith("{\\rtf"):
+                return "rtf"
+            if any(tag in text[:500].lower() for tag in ("<html", "<!doctype", "<body", "<head")):
+                return "html"
+            if text.strip().startswith("{") or text.strip().startswith("["):
+                return "text"  # JSON-like, treat as text
+            # 看起来像纯文本
+            if all(32 <= ord(c) < 127 or c in "\n\r\t" for c in text[:200] if c):
+                return "text"
+        except UnicodeDecodeError:
+            pass
+
+        return "unknown"
+
+    def _validate_file_type_mismatch(
+        self, claimed_type: str, detected_type: str, filename: str
+    ) -> str:
+        """检测并修正文件类型不匹配。
+
+        若 claimed_type 与 detected_type 不一致，以 detected_type 为准。
+        特殊处理：zip_based 类型需要文件名辅助判断。
+        """
+        if detected_type == "unknown":
+            return claimed_type  # 无法检测，信任传入的类型
+
+        if detected_type == "zip_based":
+            # 无法区分 docx/xlsx，依赖文件名
+            if filename:
+                ext = Path(filename).suffix.lower().lstrip(".")
+                if ext in ("docx", "doc"):
+                    return "word"
+                if ext in ("xlsx", "xls"):
+                    return "excel"
+            return "word"  # 默认按 Word 处理
+
+        if claimed_type != detected_type:
+            logger.warning(
+                "File type mismatch: claimed='%s', detected='%s' (file=%s). "
+                "Auto-correcting to detected type.",
+                claimed_type, detected_type, filename,
+            )
+            return detected_type
+
+        return claimed_type
 
     # ------------------------------------------------------------------
     # Type normalization
@@ -386,15 +485,22 @@ class DocumentConverter:
         if ft in dispatchers:
             dispatchers[ft](file_bytes, filename, result, progress_callback)
         else:
-            # 未知类型 — 尝试图片回退
-            logger.warning("Unknown file_type=%s; attempting image fallback", ft)
-            try:
-                self._convert_image(file_bytes, filename, result, progress_callback)
-            except Exception:
-                raise UnsupportedFormatError(ft)
-            if result.page_count == 0:
-                raise UnsupportedFormatError(ft)
-            result.warnings.append(f"未知文件类型 '{ft}'，已按图片处理")
+            # 未知类型 — 尝试自动检测
+            logger.warning("Unknown file_type='%s'; attempting auto-detection", ft)
+            detected = self._detect_file_type_from_bytes(file_bytes, filename)
+            if detected != "unknown" and detected in dispatchers:
+                logger.info("Auto-detected type='%s', using that instead", detected)
+                dispatchers[detected](file_bytes, filename, result, progress_callback)
+                result.warnings.append(f"文件类型已自动检测为 '{detected}'（传入类型 '{ft}' 无效）")
+            else:
+                # 最后尝试图片回退
+                try:
+                    self._convert_image(file_bytes, filename, result, progress_callback)
+                except Exception:
+                    raise UnsupportedFormatError(ft)
+                if result.page_count == 0:
+                    raise UnsupportedFormatError(ft)
+                result.warnings.append(f"未知文件类型 '{ft}'，已按图片处理")
 
     # ------------------------------------------------------------------
     # Image
@@ -405,7 +511,19 @@ class DocumentConverter:
         result: ConversionResult, __: Any = None,
     ) -> None:
         """图片 → 单页 BGR 数组。"""
-        pil_image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+        try:
+            pil_image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+        except Exception as e:
+            # Detect what the file actually is for a better error message
+            detected = self._detect_file_type_from_bytes(file_bytes, _filename or "")
+            if detected != "image" and detected != "unknown":
+                raise ConversionError(
+                    f"文件不是有效的图片格式，实际类型为 '{detected}'。"
+                    f"请使用正确的文件类型参数调用 API。"
+                ) from e
+            raise CorruptedFileError(
+                f"无法解析图片文件: {e}"
+            ) from e
         bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
         result.pages = [bgr]
         result.converter_used = "pil"
@@ -466,11 +584,12 @@ class DocumentConverter:
         self, file_bytes: bytes, filename: str,
         result: ConversionResult, progress_callback: Optional[Callable] = None,
     ) -> None:
-        """Word 文档 → 三级降级策略。
+        """Word 文档 → 四级降级策略。
 
-        Tier 1: LibreOffice headless → PDF → PyMuPDF
-        Tier 2: python-docx → Pillow 文本渲染（并行多页）
-        Tier 3: 纯文本提取（无渲染，仅 raw_text）
+        Tier 1: LibreOffice headless → PDF → PyMuPDF（版式保真度最高）
+        Tier 2: docx 图片提取 → 提取嵌入图片（适合图片型合同）
+        Tier 3: python-docx → Pillow 文本渲染（并行多页）
+        Tier 4: 纯文本提取（无渲染，仅 raw_text）
         """
         # Tier 1: LibreOffice
         soffice = self._find_libreoffice()
@@ -486,25 +605,19 @@ class DocumentConverter:
                 return
             except Exception as exc:
                 logger.warning("LibreOffice conversion failed: %s", exc)
-                result.warnings.append(f"LibreOffice失败 ({exc})，降级到python-docx")
+                result.warnings.append(f"LibreOffice失败 ({exc})，降级到图片提取")
 
-        # Tier 2: python-docx
+        # Tier 2: Extract embedded images from docx (best for scanned/image-heavy docs)
         try:
-            if progress_callback:
-                progress_callback(0, 1, "python-docx渲染")
-            pages, raw_text = self._word_via_python_docx_parallel(file_bytes, progress_callback)
-            result.pages = pages
-            result.raw_text = raw_text
-            result.converter_used = "python-docx+pillow"
-            result.warnings.append("Word已渲染为文本图像（python-docx降级）— 版式保真度降低")
-            if progress_callback:
-                progress_callback(1, 1, "python-docx渲染")
+            self._convert_word_with_images(file_bytes, filename, result, progress_callback)
             return
+        except ConversionError:
+            raise
         except Exception as exc:
-            logger.warning("python-docx fallback failed: %s", exc)
-            result.warnings.append(f"python-docx失败 ({exc})，降级到纯文本提取")
+            logger.warning("Word image extraction + text rendering failed: %s", exc)
+            result.warnings.append(f"Word处理失败 ({exc})，降级到纯文本提取")
 
-        # Tier 3: 纯文本提取
+        # Tier 4: 纯文本提取（最终回退）
         raw_text = self._word_extract_text_only(file_bytes)
         if raw_text:
             lines = [l for l in raw_text.split("\n") if l.strip()]
@@ -602,6 +715,100 @@ class DocumentConverter:
             return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
         except Exception:
             return ""
+
+    # ------------------------------------------------------------------
+    # Word: image extraction (extract embedded images from docx)
+    # ------------------------------------------------------------------
+
+    def extract_images_from_docx(self, file_bytes: bytes) -> List[np.ndarray]:
+        """从 .docx 文件中提取所有嵌入图片，返回 BGR numpy 数组列表。
+
+        .docx 文件本质是 ZIP 包，图片存储在 word/media/ 目录下。
+        此方法提取所有图片，可用于需要单独处理 Word 内嵌图片的场景。
+        """
+        import zipfile
+
+        images: List[np.ndarray] = []
+        try:
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+                media_files = [
+                    name for name in zf.namelist()
+                    if name.startswith("word/media/") and not name.endswith("/")
+                ]
+                for name in sorted(media_files):
+                    try:
+                        img_bytes = zf.read(name)
+                        pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                        bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                        images.append(bgr)
+                        logger.debug("Extracted image from docx: %s (%dx%d)",
+                                     name, bgr.shape[1], bgr.shape[0])
+                    except Exception as e:
+                        logger.warning("Failed to extract image '%s' from docx: %s", name, e)
+        except zipfile.BadZipFile:
+            logger.warning("File is not a valid ZIP archive — cannot extract images")
+        except Exception as e:
+            logger.warning("Failed to extract images from docx: %s", e)
+
+        return images
+
+    def _convert_word_with_images(
+        self, file_bytes: bytes, filename: str,
+        result: ConversionResult, progress_callback: Optional[Callable] = None,
+    ) -> None:
+        """Word 文档转换 — 优先提取嵌入图片，降级到文本渲染。
+
+        策略:
+          1. 提取 docx 内嵌图片 → 作为页面
+          2. 若图片提取失败/无图片 → 回退到 python-docx 文本渲染
+          3. 所有策略均失败 → 纯文本提取
+        """
+        # Step 1: Try extracting embedded images
+        embedded_images = self.extract_images_from_docx(file_bytes)
+        if embedded_images:
+            logger.info("Extracted %d embedded images from docx", len(embedded_images))
+            result.pages = embedded_images
+            # Still extract text for LLM context
+            raw_text = self._word_extract_text_only(file_bytes)
+            result.raw_text = raw_text
+            result.converter_used = "docx-image-extraction"
+            result.warnings.append(
+                f"从 Word 文档中提取了 {len(embedded_images)} 张嵌入图片"
+            )
+            if not raw_text:
+                result.warnings.append("Word 文档未提取到文本内容（可能仅包含图片）")
+            return
+
+        # Step 2: Fallback to python-docx text rendering
+        try:
+            if progress_callback:
+                progress_callback(0, 1, "python-docx渲染")
+            pages, raw_text = self._word_via_python_docx_parallel(
+                file_bytes, progress_callback
+            )
+            result.pages = pages
+            result.raw_text = raw_text
+            result.converter_used = "python-docx+pillow"
+            result.warnings.append(
+                "Word 文档无嵌入图片，已渲染为文本图像（python-docx降级）— 版式保真度降低"
+            )
+            if progress_callback:
+                progress_callback(1, 1, "python-docx渲染")
+            return
+        except Exception as exc:
+            logger.warning("python-docx fallback failed: %s", exc)
+            result.warnings.append(f"python-docx失败 ({exc})，降级到纯文本提取")
+
+        # Step 3: Pure text extraction
+        raw_text = self._word_extract_text_only(file_bytes)
+        if raw_text:
+            lines = [l for l in raw_text.split("\n") if l.strip()]
+            result.pages = [self._render_text_page(lines)]
+            result.raw_text = raw_text
+            result.converter_used = "python-docx(text-only)"
+            result.warnings.append("Word仅提取纯文本（无版式）")
+        else:
+            raise ConversionError("Word文档转换失败：所有策略均无法提取内容")
 
     # ------------------------------------------------------------------
     # Excel (xls / xlsx)
