@@ -31,3 +31,7 @@ rocketmq-client-python==2.0.0
 # MinIO Client — file download for RocketMQ consumer
 minio==7.2.10
 
+# Document Conversion (PDF / Word → images)
+PyMuPDF==1.28.0
+python-docx==1.2.0
+
