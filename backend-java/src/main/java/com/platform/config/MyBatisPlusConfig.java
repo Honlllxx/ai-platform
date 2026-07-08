@@ -3,6 +3,7 @@ package com.platform.config;
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
+import com.platform.handler.JsonbTypeHandler;
 import com.platform.handler.LocalDateTimeTypeHandler;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.type.JdbcType;
@@ -32,14 +33,17 @@ public class MyBatisPlusConfig {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void registerTypeHandlers(ApplicationReadyEvent event) {
-        LocalDateTimeTypeHandler handler = new LocalDateTimeTypeHandler();
+        LocalDateTimeTypeHandler localDateTimeHandler = new LocalDateTimeTypeHandler();
+        JsonbTypeHandler jsonbHandler = new JsonbTypeHandler();
         Map<String, SqlSessionFactory> factories = event.getApplicationContext()
                 .getBeansOfType(SqlSessionFactory.class);
         for (SqlSessionFactory factory : factories.values()) {
             factory.getConfiguration().getTypeHandlerRegistry()
-                    .register(LocalDateTime.class, JdbcType.TIMESTAMP_WITH_TIMEZONE, handler);
+                    .register(LocalDateTime.class, JdbcType.TIMESTAMP_WITH_TIMEZONE, localDateTimeHandler);
             factory.getConfiguration().getTypeHandlerRegistry()
-                    .register(LocalDateTime.class, handler);
+                    .register(LocalDateTime.class, localDateTimeHandler);
+            factory.getConfiguration().getTypeHandlerRegistry()
+                    .register(String.class, JdbcType.OTHER, jsonbHandler);
         }
     }
 }
