@@ -1,6 +1,7 @@
 package com.platform.entity.ai;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.platform.handler.JsonbTypeHandler;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -14,6 +15,7 @@ public class PromptVersion {
     private String documentType;
     private String stage;
     private String content;
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String variables;
     private String author;
     private String status;
