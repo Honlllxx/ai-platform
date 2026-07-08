@@ -198,10 +198,10 @@ import {
   getDocuments,
   getDocument,
   deleteDocument,
-  preprocessDocument,
   type DocumentItem
 } from '@/api/document'
 import { runPipeline } from '@/api/pipeline'
+import { getMetadataFields } from '@/api/metadata'
 import { useTable } from '@/composables/useTable'
 
 const router = useRouter()
@@ -403,7 +403,14 @@ const processingIds = ref(new Set<number>())
 async function handleStartPipeline(row: DocumentItem) {
   processingIds.value.add(row.id)
   try {
-    await runPipeline(row.id)
+    // 获取所有活跃的元数据字段，传给流水线用于 LLM 提取
+    const res = await getMetadataFields({ page: 1, pageSize: 100 })
+    const metadataFields = (res.data?.records || []).map((f: any) => ({
+      code: f.code,
+      name: f.name,
+      type: f.type || f.dataType
+    }))
+    await runPipeline(row.id, metadataFields)
     ElMessage.success(`已触发全流程处理：${row.fileName}`)
     fetchData()
   } catch {
