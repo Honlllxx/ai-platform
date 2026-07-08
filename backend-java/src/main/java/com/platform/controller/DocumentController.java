@@ -225,6 +225,7 @@ public class DocumentController {
         task.setTaskId(taskId);
         task.setFileName(doc.getFileName());
         task.setFileUrl(doc.getFileUrl());
+        task.setFileType(doc.getFileType());
         task.setMetadataFields(metadataFields);
         task.setUserId(userId);
         task.setTimestamp(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
