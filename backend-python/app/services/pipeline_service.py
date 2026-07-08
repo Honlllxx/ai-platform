@@ -39,6 +39,7 @@ class PipelineService:
         progress_callback: callable = None,
         document_id: int | None = None,
         db: AsyncSession | None = None,
+        raw_text: str = "",
     ) -> dict:
         """Run the complete pipeline.
 
@@ -50,6 +51,7 @@ class PipelineService:
             progress_callback: async callable(step, progress_pct, message).
             document_id: optional document ID for DB persistence.
             db: optional async DB session for persisting results.
+            raw_text: optional raw text extracted by DocumentConverter (Word doc fallback).
         """
         task_id = str(uuid.uuid4())
         started_at = time.time()
@@ -57,8 +59,17 @@ class PipelineService:
 
         # ── Create pipeline record if DB available ──
         pipeline_id = None
-        if db is not None and document_id is not None:
-            pipeline_id = await self._create_pipeline(db, document_id, task_id)
+        try:
+            if db is not None and document_id is not None:
+                pipeline_id = await self._create_pipeline(db, document_id, task_id)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Failed to create pipeline record for document %s: %s", document_id, e
+            )
+            # Continue without DB persistence — pipeline still runs
+            pipeline_id = None
+            db = None
 
         try:
             # ── Stage 1: Preprocess (per page) ──
@@ -109,12 +120,32 @@ class PipelineService:
             if pipeline_id:
                 await self._update_pipeline(db, pipeline_id, "ocr", 3)
             ocr_entries = []
+            ocr_errors = 0
             for page_idx, proc in enumerate(processed_pages):
-                entries = await asyncio.to_thread(ocr_service.recognize, proc)
+                try:
+                    entries = await asyncio.to_thread(ocr_service.recognize, proc)
+                except Exception as ocr_err:
+                    ocr_errors += 1
+                    timeline.append({"stage": "ocr", "status": "skipped",
+                                     "page": page_idx + 1, "error": str(ocr_err)})
+                    entries = []
                 # Annotate each entry with page number
                 for e in entries:
                     e["page"] = page_idx + 1
                 ocr_entries.extend(entries)
+
+            # Fallback: if PaddleOCR failed on all pages and we have raw_text (e.g., Word docs),
+            # create synthetic OCR entries from the raw text so LLM extraction can still work.
+            if ocr_errors == len(processed_pages) and raw_text:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "PaddleOCR failed on all %d pages; using raw_text fallback (%d chars)",
+                    len(processed_pages), len(raw_text),
+                )
+                ocr_entries = self._raw_text_to_ocr_entries(raw_text)
+                timeline.append({"stage": "ocr", "status": "fallback",
+                                 "fallback_reason": "PaddleOCR unavailable (ONEDNN/PIR)",
+                                 "raw_text_chars": len(raw_text)})
 
             total_chars = sum(len(e["text"]) for e in ocr_entries)
             avg_conf = (
@@ -354,6 +385,28 @@ class PipelineService:
             parts.append(f"\n[Page {pg}]\n")
             parts.append("\n".join(page_groups[pg]))
         return "\n".join(parts)
+
+    @staticmethod
+    def _raw_text_to_ocr_entries(raw_text: str) -> list[dict]:
+        """Convert raw text (e.g., from python-docx) into OCR entry dicts.
+
+        Used as fallback when PaddleOCR is unavailable (e.g., ONEDNN/PIR
+        compatibility issues on Windows).
+        """
+        lines = raw_text.split("\n")
+        entries = []
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            entries.append({
+                "id": len(entries),
+                "text": stripped,
+                "confidence": 0.7,  # Marked lower than real OCR to signal fallback
+                "bbox": {"x": 0, "y": i * 28, "w": 800, "h": 28},
+                "page": 1,  # python-docx text is not paginated
+            })
+        return entries
 
     # ==================== Progress reporting ====================
 
