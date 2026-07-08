@@ -1,11 +1,24 @@
 server:
   port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+  tomcat:
+    uri-encoding: UTF-8
 
 spring:
   application:
     name: platform-backend
   profiles:
     active: dev
+  # 强制 HTTP 消息转换器使用 UTF-8
+  http:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
   # Jackson 日期序列化
   jackson:
