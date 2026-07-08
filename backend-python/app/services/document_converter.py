@@ -50,6 +50,7 @@ class DocumentConverter:
         """
         ft = (file_type or "").lower()
         warnings: List[str] = []
+        raw_text = ""
 
         if ft in ("image", "jpg", "jpeg", "png", "bmp", "tiff", "tif", "webp"):
             pages, converter = self._convert_image(file_bytes)
@@ -62,7 +63,7 @@ class DocumentConverter:
                 if len(pages) > 0:
                     warnings.append("PDF rendered as single image (PyMuPDF could not parse pages)")
         elif ft in ("word", "doc", "docx"):
-            pages, converter, w = self._convert_word(file_bytes, filename)
+            pages, converter, w, raw_text = self._convert_word(file_bytes, filename)
             warnings.extend(w)
         else:
             # Unknown type — try as image anyway
@@ -77,6 +78,7 @@ class DocumentConverter:
             "original_type": ft,
             "converter_used": converter,
             "warnings": warnings,
+            "raw_text": raw_text if ft in ("word", "doc", "docx") else "",
         }
         logger.info(
             "DocumentConverter: %d page(s)  type=%s  converter=%s  warnings=%d",
@@ -128,11 +130,14 @@ class DocumentConverter:
 
     def _convert_word(
         self, file_bytes: bytes, filename: str
-    ) -> Tuple[List[np.ndarray], str, List[str]]:
+    ) -> Tuple[List[np.ndarray], str, List[str], str]:
         """Convert Word document to page images.
 
         Tier 1: LibreOffice headless → PDF → PyMuPDF render.
         Tier 2: python-docx → Pillow text rendering (lower fidelity).
+
+        Returns:
+            (pages, converter_name, warnings, raw_text)
         """
         warnings: List[str] = []
 
@@ -141,16 +146,16 @@ class DocumentConverter:
         if soffice:
             try:
                 pages = self._word_via_libreoffice(file_bytes, soffice)
-                return pages, "libreoffice+pymupdf", warnings
+                return pages, "libreoffice+pymupdf", warnings, ""
             except Exception as exc:
                 logger.warning("LibreOffice conversion failed: %s", exc)
                 warnings.append(f"LibreOffice failed ({exc}); falling back to python-docx")
 
         # --- Tier 2: python-docx text rendering ---
         try:
-            pages = self._word_via_python_docx(file_bytes)
+            pages, raw_text = self._word_via_python_docx(file_bytes)
             warnings.append("Word rendered as text-only images (python-docx fallback) — layout fidelity reduced")
-            return pages, "python-docx+pillow", warnings
+            return pages, "python-docx+pillow", warnings, raw_text
         except Exception as exc:
             logger.error("python-docx fallback also failed: %s", exc)
             raise ValueError(f"Cannot convert Word document: {exc}") from exc
@@ -180,17 +185,23 @@ class DocumentConverter:
             return pages
 
     @staticmethod
-    def _word_via_python_docx(file_bytes: bytes) -> List[np.ndarray]:
-        """Render Word paragraphs as pill images (text-only, no layout)."""
+    def _word_via_python_docx(file_bytes: bytes) -> Tuple[List[np.ndarray], str]:
+        """Render Word paragraphs as pill images (text-only, no layout).
+
+        Returns:
+            (pages, raw_text) — pages as BGR images, raw_text as combined paragraph text
+            for OCR fallback when PaddleOCR is unavailable.
+        """
         import docx
 
         doc = docx.Document(io.BytesIO(file_bytes))
         paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+        raw_text = "\n".join(paragraphs)
 
         if not paragraphs:
             # Empty doc or all-empty paragraphs — produce a single blank page
             blank = np.ones((1200, 900, 3), dtype=np.uint8) * 255
-            return [blank]
+            return [blank], ""
 
         # Split paragraphs into pages
         per_page = DocumentConverter.LINES_PER_PAGE
@@ -199,7 +210,7 @@ class DocumentConverter:
         pages: List[np.ndarray] = []
         for chunk in page_chunks:
             pages.append(DocumentConverter._render_text_page(chunk))
-        return pages
+        return pages, raw_text
 
     @staticmethod
     def _render_text_page(lines: List[str], width: int = 1200,
