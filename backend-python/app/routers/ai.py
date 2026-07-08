@@ -71,31 +71,31 @@ async def ai_preprocess(
 
     try:
         pages, conv_meta = await read_pages_from_upload(file, file_type)
+
+        # Process first page (or all pages and return aggregate)
+        processed, meta = preprocess_service.process(pages[0])
+        elapsed = (time.perf_counter() - t0) * 1000
+        logger.info("preprocess done  shape=%s  deskew=%s  stamp=%s  pages=%d  elapsed=%.0fms",
+                    processed.shape[:2],
+                    meta.get("deskew", {}).get("applied"),
+                    meta.get("stamp_removal", {}).get("applied"),
+                    len(pages), elapsed)
+
+        return ApiResponse.success({
+            "shape": processed.shape[:2],
+            "page_count": len(pages),
+            "converter_used": conv_meta.get("converter_used", "unknown"),
+            "metadata": meta,
+        })
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("preprocess failed — cannot read file: %s", e)
+        logger.exception("preprocess failed — unhandled error: %s", e)
         return ApiResponse.error(
             code=400,
             message=f"无法解析文件: {file.filename}，请确认文件格式正确",
             data={"shape": [0, 0], "metadata": {"error": str(e)}},
         )
-
-    # Process first page (or all pages and return aggregate)
-    processed, meta = preprocess_service.process(pages[0])
-    elapsed = (time.perf_counter() - t0) * 1000
-    logger.info("preprocess done  shape=%s  deskew=%s  stamp=%s  pages=%d  elapsed=%.0fms",
-                processed.shape[:2],
-                meta.get("deskew", {}).get("applied"),
-                meta.get("stamp_removal", {}).get("applied"),
-                len(pages), elapsed)
-
-    return ApiResponse.success({
-        "shape": processed.shape[:2],
-        "page_count": len(pages),
-        "converter_used": conv_meta.get("converter_used", "unknown"),
-        "metadata": meta,
-    })
 
 
 @router.post("/ocr")
@@ -174,19 +174,38 @@ async def ai_pipeline_run(
     Supports all file types via DocumentConverter — PDF pages and Word docs
     are converted to images before processing.
     """
-    pages, conv_meta = await read_pages_from_upload(file, file_type)
+    try:
+        pages, conv_meta = await read_pages_from_upload(file, file_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("pipeline failed — cannot read uploaded file")
+        return ApiResponse.error(
+            code=400,
+            message=f"无法解析文件: {file.filename}，请确认文件格式正确",
+            data={"error": str(e)},
+        )
 
     try:
         fields = json.loads(metadata_fields)
     except json.JSONDecodeError:
         fields = []
 
-    result = await pipeline_service.run_full_pipeline(
-        pages=pages,
-        metadata_fields=fields,
-        document_id=document_id,
-        db=db,
-    )
+    try:
+        result = await pipeline_service.run_full_pipeline(
+            pages=pages,
+            metadata_fields=fields,
+            document_id=document_id,
+            db=db,
+            raw_text=conv_meta.get("raw_text", ""),
+        )
+    except Exception as e:
+        logger.exception("pipeline failed — unhandled error in run_full_pipeline")
+        return ApiResponse.error(
+            code=500,
+            message=f"处理失败: {e}",
+            data={"error": str(e)},
+        )
 
     # Attach conversion metadata
     result["converter_used"] = conv_meta.get("converter_used", "unknown")
@@ -222,6 +241,7 @@ async def ai_pipeline_graph(
         metadata_fields=fields,
         document_id=document_id,
         db=db,
+        raw_text=conv_meta.get("raw_text", ""),
     )
 
     # Attach conversion metadata
