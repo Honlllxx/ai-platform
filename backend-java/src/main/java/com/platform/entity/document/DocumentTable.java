@@ -1,6 +1,7 @@
 package com.platform.entity.document;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.platform.handler.JsonbTypeHandler;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -11,7 +12,9 @@ public class DocumentTable {
     private Long id;
     private Long documentId;
     private Double confidence;
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String originalTable;
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String extractedTable;
 
     @TableField(fill = FieldFill.INSERT)
