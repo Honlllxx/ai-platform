@@ -27,7 +27,7 @@ class DocumentLayout(Base):
     __tablename__ = "document_layouts"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, unique=True)
+    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)  # non-unique: allow re-processing
     image_url = Column(String(1000))
     regions = Column(JSONB, nullable=False, default=list)
     confidence = Column(Float)
@@ -38,7 +38,7 @@ class DocumentOcr(Base):
     __tablename__ = "document_ocr"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, unique=True)
+    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)  # non-unique: allow re-processing
     total_chars = Column(Integer)
     avg_confidence = Column(Float)
     language = Column(String(20), default="ch")
