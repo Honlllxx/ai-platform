@@ -56,33 +56,14 @@ public class AiPipelineService {
     // ==================== Preprocess ====================
 
     /**
-     * Send document to Python AI for preprocessing (deskew + stamp removal).
+     * Send document to Python AI for preprocessing.
+     * Python's DocumentConverter handles all file types (image, pdf, word).
      */
-    /** Image file extensions that support OpenCV preprocessing. */
-    private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "bmp", "tiff", "tif", "webp");
-
     @SuppressWarnings("unchecked")
     public Map<String, Object> preprocessDocument(Long documentId) {
         Document doc = documentMapper.selectById(documentId);
         if (doc == null) {
             throw new RuntimeException("Document not found: " + documentId);
-        }
-
-        // Check if file type supports image preprocessing
-        String fileType = doc.getFileType();
-        if (fileType == null || !IMAGE_EXTENSIONS.contains(fileType.toLowerCase())) {
-            log.info("Preprocess skipped for document {} — file type '{}' is not an image, marking as preprocessed directly",
-                    documentId, fileType);
-
-            doc.setStatus("preprocessed");
-            documentMapper.updateById(doc);
-
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("id", documentId);
-            response.put("status", "preprocessed");
-            response.put("message", "预处理完成（非图片文件，跳过图像预处理）");
-            response.put("aiResult", Map.of("shape", List.of(0, 0), "metadata", Map.of("note", "skipped — not an image file")));
-            return response;
         }
 
         // Update status
@@ -92,10 +73,15 @@ public class AiPipelineService {
         try {
             byte[] fileBytes = downloadFileFromMinio(doc.getFileUrl());
             String filename = doc.getFileName();
+            String fileType = doc.getFileType();
 
-            Map<String, Object> result = callAiPreprocess(fileBytes, filename);
+            Map<String, Object> result = callAiPreprocess(fileBytes, filename, fileType);
 
             doc.setStatus("preprocessed");
+            // Update pageCount if returned
+            if (result.get("page_count") instanceof Number pc) {
+                doc.setPageCount(pc.intValue());
+            }
             documentMapper.updateById(doc);
 
             Map<String, Object> response = new LinkedHashMap<>();
@@ -147,13 +133,18 @@ public class AiPipelineService {
             byte[] fileBytes = downloadFileFromMinio(doc.getFileUrl());
             String filename = doc.getFileName();
 
-            Map<String, Object> aiResult = callAiPipeline(fileBytes, filename, metadataFields, documentId);
+            Map<String, Object> aiResult = callAiPipeline(fileBytes, filename, metadataFields, documentId, doc.getFileType());
 
             // Persist results
             persistLayoutResult(pipeline.getId(), (Map<String, Object>) aiResult.get("layout"));
             persistOcrResult(pipeline.getId(), (Map<String, Object>) aiResult.get("ocr"));
             persistTableResults(pipeline.getId(), (List<Map<String, Object>>) aiResult.get("tables"));
             persistExtractionResults(pipeline.getId(), (List<Map<String, Object>>) aiResult.get("extraction"));
+
+            // Update page count from pipeline result
+            if (aiResult.get("page_count") instanceof Number pc) {
+                doc.setPageCount(pc.intValue());
+            }
 
             // Update pipeline status
             pipeline.setStatus("completed");
@@ -200,8 +191,10 @@ public class AiPipelineService {
     // ==================== Private: Call Python AI ====================
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> callAiPreprocess(byte[] fileBytes, String filename) {
-        String url = aiClientConfig.getBaseUrl() + "/api/ai/preprocess";
+    private Map<String, Object> callAiPreprocess(byte[] fileBytes, String filename, String fileType) {
+        String url = aiClientConfig.getBaseUrl() + "/api/ai/preprocess" +
+                "?file_type=" + java.net.URLEncoder.encode(fileType != null ? fileType : "image",
+                        java.nio.charset.StandardCharsets.UTF_8);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
@@ -227,7 +220,7 @@ public class AiPipelineService {
     @SuppressWarnings("unchecked")
     private Map<String, Object> callAiPipeline(byte[] fileBytes, String filename,
                                                 List<Map<String, String>> metadataFields,
-                                                Long documentId) {
+                                                Long documentId, String fileType) {
         String fieldsJson = "[]";
         if (metadataFields != null && !metadataFields.isEmpty()) {
             try {
@@ -237,7 +230,9 @@ public class AiPipelineService {
 
         String url = aiClientConfig.getBaseUrl() + "/api/ai/pipeline/run" +
                 "?metadata_fields=" + java.net.URLEncoder.encode(fieldsJson, java.nio.charset.StandardCharsets.UTF_8) +
-                "&document_id=" + documentId;
+                "&document_id=" + documentId +
+                "&file_type=" + java.net.URLEncoder.encode(fileType != null ? fileType : "image",
+                        java.nio.charset.StandardCharsets.UTF_8);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
