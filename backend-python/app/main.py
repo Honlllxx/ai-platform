@@ -41,7 +41,30 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
+    debug=settings.debug,  # Show tracebacks in dev mode
 )
+
+# ── Global exception handler for debugging ──
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import traceback
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Log all unhandled exceptions with full traceback for debugging."""
+    logger.error(
+        "Unhandled exception on %s %s: %s\n%s",
+        request.method, request.url.path, exc,
+        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "code": 500,
+            "message": f"Internal error: {exc}",
+            "data": {"error_type": type(exc).__name__, "error": str(exc)},
+        },
+    )
 
 # CORS — allow frontend dev server
 app.add_middleware(
