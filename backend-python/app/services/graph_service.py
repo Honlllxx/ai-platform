@@ -131,11 +131,31 @@ class PipelineGraph:
 
         # OCR (per page, with page annotations)
         ocr_entries = []
+        ocr_errors = 0
         for page_idx, proc in enumerate(processed_pages):
-            entries = await asyncio.to_thread(ocr_service.recognize, proc)
+            try:
+                entries = await asyncio.to_thread(ocr_service.recognize, proc)
+            except Exception as ocr_err:
+                ocr_errors += 1
+                state["timeline"].append({"stage": "ocr", "status": "skipped",
+                                          "page": page_idx + 1, "error": str(ocr_err)})
+                entries = []
             for e in entries:
                 e["page"] = page_idx + 1
             ocr_entries.extend(entries)
+
+        # Fallback: use raw_text if PaddleOCR failed on all pages
+        raw_text = state.get("raw_text", "")
+        if ocr_errors == page_count and raw_text:
+            import logging
+            logging.getLogger(__name__).warning(
+                "PaddleOCR failed on all %d pages; using raw_text fallback (%d chars)",
+                page_count, len(raw_text),
+            )
+            ocr_entries = self._raw_text_to_ocr_entries(raw_text)
+            state["timeline"].append({"stage": "ocr", "status": "fallback",
+                                      "fallback_reason": "PaddleOCR unavailable (ONEDNN/PIR)",
+                                      "raw_text_chars": len(raw_text)})
 
         state["ocr_entries"] = ocr_entries
         state["ocr_total_chars"] = sum(len(e["text"]) for e in ocr_entries)
@@ -331,6 +351,7 @@ class PipelineGraph:
         document_id: Optional[int] = None,
         db=None,  # AsyncSession
         task_id: Optional[str] = None,
+        raw_text: str = "",
     ) -> dict:
         """Execute the graph pipeline.
 
@@ -350,6 +371,7 @@ class PipelineGraph:
             task_id=task_id,
             db=db,
             pipeline_id=None,
+            raw_text=raw_text,
         )
 
         # Create pipeline record
@@ -472,6 +494,27 @@ class PipelineGraph:
             parts.append(f"\n[Page {pg}]\n")
             parts.append("\n".join(page_groups[pg]))
         return "\n".join(parts)
+
+    @staticmethod
+    def _raw_text_to_ocr_entries(raw_text: str) -> list[dict]:
+        """Convert raw text (e.g., from python-docx) into OCR entry dicts.
+
+        Used as fallback when PaddleOCR is unavailable.
+        """
+        lines = raw_text.split("\n")
+        entries = []
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            entries.append({
+                "id": len(entries),
+                "text": stripped,
+                "confidence": 0.7,
+                "bbox": {"x": 0, "y": i * 28, "w": 800, "h": 28},
+                "page": 1,
+            })
+        return entries
 
     # ═══════════════════════════════════════════════════════════
     # Private: DB persistence (delegates to SQLAlchemy)
