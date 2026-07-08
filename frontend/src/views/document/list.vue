@@ -125,14 +125,14 @@
               详情
             </el-button>
             <el-button
-              v-if="row.status === 'pending'"
-              type="warning"
+              v-if="row.status === 'pending' || row.status === 'preprocessed'"
+              type="primary"
               link
               :icon="SetUp"
-              :loading="preprocessingIds.has(row.id)"
-              @click="handlePreprocess(row)"
+              :loading="processingIds.has(row.id)"
+              @click="handleStartPipeline(row)"
             >
-              预处理
+              开始处理
             </el-button>
             <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">
               删除
@@ -201,6 +201,7 @@ import {
   preprocessDocument,
   type DocumentItem
 } from '@/api/document'
+import { runPipeline } from '@/api/pipeline'
 import { useTable } from '@/composables/useTable'
 
 const router = useRouter()
@@ -396,19 +397,19 @@ async function handleBatchDelete() {
   fetchData()
 }
 
-// Preprocess
-const preprocessingIds = ref(new Set<number>())
+// Start pipeline
+const processingIds = ref(new Set<number>())
 
-async function handlePreprocess(row: DocumentItem) {
-  preprocessingIds.value.add(row.id)
+async function handleStartPipeline(row: DocumentItem) {
+  processingIds.value.add(row.id)
   try {
-    await preprocessDocument(row.id)
-    ElMessage.success(`已触发预处理：${row.fileName}`)
+    await runPipeline(row.id)
+    ElMessage.success(`已触发全流程处理：${row.fileName}`)
     fetchData()
   } catch {
     // Error handled by interceptor
   } finally {
-    preprocessingIds.value.delete(row.id)
+    processingIds.value.delete(row.id)
   }
 }
 
