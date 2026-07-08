@@ -1,6 +1,7 @@
 package com.platform.entity.business;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.platform.handler.JsonbTypeHandler;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -12,6 +13,7 @@ public class Template {
     private String name;
     private String documentType;
     private String description;
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String regions;
     private Integer status;
     private Integer version;
