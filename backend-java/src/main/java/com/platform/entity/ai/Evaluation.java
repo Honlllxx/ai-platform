@@ -1,6 +1,7 @@
 package com.platform.entity.ai;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.platform.handler.JsonbTypeHandler;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -21,6 +22,7 @@ public class Evaluation {
     private String status;
     private Double duration;
     private String errorMessage;
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String detail;
     private LocalDateTime startedAt;
     private LocalDateTime finishedAt;
