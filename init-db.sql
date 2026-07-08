@@ -135,7 +135,7 @@ CREATE INDEX idx_documents_created_at ON documents(created_at);
 -- 2.2 版面分析结果
 CREATE TABLE document_layouts (
     id              BIGSERIAL       PRIMARY KEY,
-    document_id     BIGINT          NOT NULL REFERENCES documents(id) ON DELETE CASCADE UNIQUE,
+    document_id     BIGINT          NOT NULL REFERENCES documents(id) ON DELETE CASCADE,  -- allow re-processing
     image_url       VARCHAR(1000),
     regions         JSONB           NOT NULL DEFAULT '[]',
     confidence      DOUBLE PRECISION,
@@ -146,7 +146,7 @@ CREATE INDEX idx_doc_layouts_doc ON document_layouts(document_id);
 -- 2.3 OCR 识别结果
 CREATE TABLE document_ocr (
     id              BIGSERIAL       PRIMARY KEY,
-    document_id     BIGINT          NOT NULL REFERENCES documents(id) ON DELETE CASCADE UNIQUE,
+    document_id     BIGINT          NOT NULL REFERENCES documents(id) ON DELETE CASCADE,  -- allow re-processing
     total_chars     INT,
     avg_confidence  DOUBLE PRECISION,
     language        VARCHAR(20)     DEFAULT 'ch',
@@ -158,7 +158,7 @@ CREATE INDEX idx_doc_ocr_doc ON document_ocr(document_id);
 -- 2.4 表格提取结果
 CREATE TABLE document_tables (
     id              BIGSERIAL       PRIMARY KEY,
-    document_id     BIGINT          NOT NULL REFERENCES documents(id) ON DELETE CASCADE UNIQUE,
+    document_id     BIGINT          NOT NULL REFERENCES documents(id) ON DELETE CASCADE,  -- allow re-processing
     confidence      DOUBLE PRECISION,
     original_table  JSONB           NOT NULL DEFAULT '{}',
     extracted_table JSONB           NOT NULL DEFAULT '{}',
