@@ -23,6 +23,7 @@ public class PipelineTaskMessage implements Serializable {
     private String taskId;
     private String fileName;
     private String fileUrl;
+    private String fileType;
     private List<Map<String, String>> metadataFields;
     private Long userId;
     private String timestamp;
