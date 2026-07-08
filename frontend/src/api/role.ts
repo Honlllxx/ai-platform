@@ -62,5 +62,5 @@ export function assignPermissions(roleId: number, permissionIds: number[]) {
 
 /** Enable or disable a role. */
 export function updateRoleStatus(roleId: number, status: 0 | 1) {
-  return request.patch(`/roles/${roleId}/status`, { status })
+  return request.put(`/roles/${roleId}/status`, { status })
 }

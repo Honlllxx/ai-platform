@@ -69,5 +69,5 @@ export function assignRoles(userId: number, roleIds: number[]) {
 
 /** Reset a user's password (admin-only). */
 export function resetPassword(userId: number, newPassword: string) {
-  return request.post(`/users/${userId}/reset-password`, { password: newPassword })
+  return request.put(`/users/${userId}/reset-password`, { password: newPassword })
 }
