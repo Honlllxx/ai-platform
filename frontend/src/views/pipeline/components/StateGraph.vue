@@ -19,7 +19,7 @@
     <div class="graph-container">
       <!-- Arrows / Edges (SVG overlay) -->
       <svg class="graph-edges" ref="svgRef" :style="svgStyle">
-        <template v-for="edge in graphData.edges" :key="`${edge.from}-${edge.to}`">
+        <template v-for="edge in safeGraphData.edges" :key="`${edge.from}-${edge.to}`">
           <line
             :x1="getEdgeCoords(edge.from).x1"
             :y1="getEdgeCoords(edge.from).y1"
@@ -55,8 +55,9 @@
 
       <!-- Nodes -->
       <div class="graph-nodes" ref="nodesRef">
+        <el-empty v-if="!safeGraphData.nodes || safeGraphData.nodes.length === 0" description="暂无状态节点数据" :image-size="60" />
         <div
-          v-for="node in graphData.nodes"
+          v-for="node in safeGraphData.nodes"
           :key="node.id"
           class="graph-node"
           :class="[`node-type-${node.type}`, `node-status-${node.status}`]"
@@ -91,6 +92,9 @@ import type { StateGraphData } from '@/api/pipeline'
 const props = defineProps<{
   graphData: StateGraphData
 }>()
+
+// Guard against null graphData from API
+const safeGraphData = computed(() => props.graphData || { nodes: [], edges: [] })
 
 const svgRef = ref<SVGElement>()
 const nodesRef = ref<HTMLElement>()

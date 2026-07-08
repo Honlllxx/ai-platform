@@ -4,11 +4,12 @@ export interface PipelineItem {
   id: number
   documentId: number
   documentName: string
+  taskId?: string
   status: 'pending' | 'running' | 'completed' | 'failed'
   currentStep: string
   totalSteps: number
   completedSteps: number
-  duration: number  // seconds
+  duration: number | null  // seconds — can be null from API
   startTime: string
   endTime?: string
   error?: string

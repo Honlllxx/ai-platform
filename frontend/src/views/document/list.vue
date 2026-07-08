@@ -22,6 +22,8 @@
             <el-option label="全部" value="" />
             <el-option label="待处理" value="pending" />
             <el-option label="预处理中" value="preprocessing" />
+            <el-option label="已预处理" value="preprocessed" />
+            <el-option label="处理中" value="processing" />
             <el-option label="已完成" value="completed" />
             <el-option label="失败" value="failed" />
           </el-select>
@@ -288,6 +290,8 @@ function statusLabel(status: string): string {
   const map: Record<string, string> = {
     pending: '待处理',
     preprocessing: '预处理中',
+    preprocessed: '已预处理',
+    processing: '处理中',
     completed: '已完成',
     failed: '失败'
   }
@@ -298,6 +302,8 @@ function statusTagType(status: string): 'info' | 'warning' | 'success' | 'danger
   const map: Record<string, 'info' | 'warning' | 'success' | 'danger'> = {
     pending: 'info',
     preprocessing: 'warning',
+    preprocessed: 'success',
+    processing: 'warning',
     completed: 'success',
     failed: 'danger'
   }

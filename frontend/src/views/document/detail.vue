@@ -105,6 +105,9 @@ function fileTypeTag(type: string) {
 function statusTag(status: string) {
   const map: Record<string, string> = {
     uploaded: 'primary',
+    pending: 'info',
+    preprocessing: 'warning',
+    preprocessed: 'success',
     processing: 'warning',
     completed: 'success',
     failed: 'danger'
@@ -115,6 +118,9 @@ function statusTag(status: string) {
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     uploaded: '已上传',
+    pending: '待处理',
+    preprocessing: '预处理中',
+    preprocessed: '已预处理',
     processing: '处理中',
     completed: '已完成',
     failed: '处理失败'

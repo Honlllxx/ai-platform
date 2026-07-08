@@ -172,7 +172,7 @@ function statusLabel(status: string): string {
   return map[status] || status
 }
 
-function formatDuration(seconds: number): string {
+function formatDuration(seconds: number | null): string {
   if (!seconds) return '-'
   if (seconds < 60) return `${seconds}s`
   const mins = Math.floor(seconds / 60)
@@ -195,6 +195,10 @@ async function loadPipelineDetail() {
     const res: any = await getPipeline(pipelineId.value)
     const data = res?.data || res
     if (data && data.id) {
+      // Map API field names to frontend field names
+      if (data.validationResults) data.validationReport = data.validationResults
+      if (data.reflectionResults) data.reflectionData = data.reflectionResults
+      if (!data.stateGraph) data.stateGraph = { nodes: [], edges: [] }
       Object.assign(pipelineInfo, data)
     } else {
       loadError.value = true
