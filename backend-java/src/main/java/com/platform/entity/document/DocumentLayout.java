@@ -1,6 +1,7 @@
 package com.platform.entity.document;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.platform.handler.JsonbTypeHandler;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -11,6 +12,7 @@ public class DocumentLayout {
     private Long id;
     private Long documentId;
     private String imageUrl;
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String regions;
     private Double confidence;
 
