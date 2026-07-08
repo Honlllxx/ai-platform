@@ -129,6 +129,9 @@ public class AiPipelineService {
         pipeline.setStartedAt(LocalDateTime.now());
         pipelineMapper.insert(pipeline);
 
+        log.info("Starting pipeline for document {} — metadata fields count: {}",
+                documentId, metadataFields != null ? metadataFields.size() : 0);
+
         try {
             byte[] fileBytes = downloadFileFromMinio(doc.getFileUrl());
             String filename = doc.getFileName();
@@ -192,9 +195,7 @@ public class AiPipelineService {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> callAiPreprocess(byte[] fileBytes, String filename, String fileType) {
-        String url = aiClientConfig.getBaseUrl() + "/api/ai/preprocess" +
-                "?file_type=" + java.net.URLEncoder.encode(fileType != null ? fileType : "image",
-                        java.nio.charset.StandardCharsets.UTF_8);
+        String url = aiClientConfig.getBaseUrl() + "/api/ai/preprocess";
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
@@ -206,6 +207,7 @@ public class AiPipelineService {
                 return filename;
             }
         });
+        body.add("file_type", fileType != null ? fileType : "image");
 
         HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
         ResponseEntity<Map> response = aiRestTemplate.exchange(url, HttpMethod.POST, request, Map.class);
@@ -228,11 +230,7 @@ public class AiPipelineService {
             } catch (Exception ignored) {}
         }
 
-        String url = aiClientConfig.getBaseUrl() + "/api/ai/pipeline/run" +
-                "?metadata_fields=" + java.net.URLEncoder.encode(fieldsJson, java.nio.charset.StandardCharsets.UTF_8) +
-                "&document_id=" + documentId +
-                "&file_type=" + java.net.URLEncoder.encode(fileType != null ? fileType : "image",
-                        java.nio.charset.StandardCharsets.UTF_8);
+        String url = aiClientConfig.getBaseUrl() + "/api/ai/pipeline/run";
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
@@ -244,15 +242,29 @@ public class AiPipelineService {
                 return filename;
             }
         });
+        body.add("metadata_fields", fieldsJson);
+        body.add("document_id", String.valueOf(documentId));
+        body.add("file_type", fileType != null ? fileType : "image");
 
         HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
-        ResponseEntity<Map> response = aiRestTemplate.exchange(url, HttpMethod.POST, request, Map.class);
 
-        Map<String, Object> responseBody = response.getBody();
-        if (responseBody != null && responseBody.containsKey("data")) {
-            return (Map<String, Object>) responseBody.get("data");
+        log.info("Calling Python AI: POST {} (metadataFields={}, fileType={})", url,
+                metadataFields != null ? metadataFields.size() : 0, fileType);
+        try {
+            ResponseEntity<Map> response = aiRestTemplate.exchange(url, HttpMethod.POST, request, Map.class);
+            log.info("Python AI responded: status={}", response.getStatusCode());
+
+            Map<String, Object> responseBody = response.getBody();
+            if (responseBody != null && responseBody.containsKey("data")) {
+                Map<String, Object> data = (Map<String, Object>) responseBody.get("data");
+                log.info("Python AI result keys: {}", data.keySet());
+                return data;
+            }
+            return responseBody != null ? responseBody : Collections.emptyMap();
+        } catch (Exception e) {
+            log.error("Python AI call failed — url={}, error={}", url, e.getMessage(), e);
+            throw e;
         }
-        return responseBody != null ? responseBody : Collections.emptyMap();
     }
 
     // ==================== Private: MinIO Download ====================
