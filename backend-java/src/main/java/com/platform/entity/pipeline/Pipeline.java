@@ -1,6 +1,7 @@
 package com.platform.entity.pipeline;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.platform.handler.JsonbTypeHandler;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -16,6 +17,7 @@ public class Pipeline {
     private Integer totalSteps;
     private Integer completedSteps;
     private Double duration;
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String stateGraph;
     private String errorMessage;
     private LocalDateTime startedAt;
