@@ -8,7 +8,7 @@ from io import BytesIO
 
 import cv2
 import numpy as np
-from fastapi import APIRouter, UploadFile, File, Query, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -62,7 +62,7 @@ async def read_pages_from_upload(
 @router.post("/preprocess")
 async def ai_preprocess(
     file: UploadFile = File(...),
-    file_type: str = Query(default="image", description="File type: image, pdf, word"),
+    file_type: str = Form(default="image", description="File type: image, pdf, word"),
 ):
     """Run image preprocessing (deskew + stamp removal). Supports all file types."""
     t0 = time.perf_counter()
@@ -164,9 +164,9 @@ async def ai_table(
 @router.post("/pipeline/run")
 async def ai_pipeline_run(
     file: UploadFile = File(...),
-    metadata_fields: str = Query(default="[]", description="JSON encoded list of field definitions"),
-    document_id: int = Query(default=None, description="Document ID for DB persistence"),
-    file_type: str = Query(default="image", description="File type: image, pdf, word"),
+    metadata_fields: str = Form(default="[]", description="JSON encoded list of field definitions"),
+    document_id: int = Form(default=None, description="Document ID for DB persistence"),
+    file_type: str = Form(default="image", description="File type: image, pdf, word"),
     db: AsyncSession = Depends(get_db),
 ):
     """Run the full AI processing pipeline on an uploaded document.
@@ -220,9 +220,9 @@ async def ai_pipeline_run(
 @router.post("/pipeline/graph")
 async def ai_pipeline_graph(
     file: UploadFile = File(...),
-    metadata_fields: str = Query(default="[]", description="JSON encoded list of field definitions"),
-    document_id: int = Query(default=None, description="Document ID for DB persistence"),
-    file_type: str = Query(default="image", description="File type: image, pdf, word"),
+    metadata_fields: str = Form(default="[]", description="JSON encoded list of field definitions"),
+    document_id: int = Form(default=None, description="Document ID for DB persistence"),
+    file_type: str = Form(default="image", description="File type: image, pdf, word"),
     db: AsyncSession = Depends(get_db),
 ):
     """Run the AI pipeline using LangGraph state graph (with validate↔reflect loop).
