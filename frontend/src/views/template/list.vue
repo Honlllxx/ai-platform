@@ -48,7 +48,7 @@
         </el-table-column>
         <el-table-column label="区域数" width="80" align="center">
           <template #default="{ row }">
-            {{ row.regions?.length || 0 }}
+            {{ regionCount(row.regions) }}
           </template>
         </el-table-column>
         <el-table-column prop="updateTime" label="更新时间" width="170" />
@@ -140,6 +140,15 @@ const {
   defaultQuery: { documentType: '', keyword: '' }
 })
 
+function regionCount(regions: any): number {
+  if (!regions) return 0
+  if (Array.isArray(regions)) return regions.length
+  if (typeof regions === 'string') {
+    try { return JSON.parse(regions).length } catch { return 0 }
+  }
+  return 0
+}
+
 function docTypeTagType(type: string) {
   const map: Record<string, string> = {
     contract: 'success',
@@ -168,7 +177,7 @@ async function handleCopy(row: TemplateItem) {
       name: `${row.name} (副本)`,
       documentType: row.documentType,
       description: row.description,
-      regions: row.regions ? JSON.parse(JSON.stringify(row.regions)) : []
+      regions: row.regions ? JSON.stringify(row.regions) : ''
     })
     ElMessage.success('模板复制成功')
     fetchData()

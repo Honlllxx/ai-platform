@@ -317,7 +317,7 @@ async function handleSave() {
   saving.value = true
   try {
     await updateTemplate(templateId.value, {
-      regions: JSON.parse(JSON.stringify(regions))
+      regions: JSON.stringify(regions)
     })
     ElMessage.success('模板保存成功')
   } catch {
@@ -339,9 +339,13 @@ async function loadTemplate() {
       templateName.value = data.name || '未命名模板'
       templateVersion.value = data.version || 1
       templateDocumentType.value = data.documentType || ''
-      if (data.regions && data.regions.length > 0) {
+      // regions may be a JSON string (from backend) or already an array
+      const regionsData = typeof data.regions === 'string'
+        ? JSON.parse(data.regions)
+        : (data.regions || [])
+      if (regionsData.length > 0) {
         regions.length = 0
-        data.regions.forEach((r: TemplateRegion) => {
+        regionsData.forEach((r: TemplateRegion) => {
           regions.push({ ...r })
           const idNum = parseInt(r.id.replace(/\D/g, '')) || 0
           if (idNum > regionIdCounter) regionIdCounter = idNum

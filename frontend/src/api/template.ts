@@ -5,7 +5,8 @@ export interface TemplateItem {
   name: string
   documentType: string
   description?: string
-  regions: TemplateRegion[]
+  /** Backend stores regions as JSON string; frontend parses to array on read */
+  regions: string | TemplateRegion[]
   status: number
   version: number
   createTime: string
