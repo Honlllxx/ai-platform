@@ -23,6 +23,8 @@
         <jjwt.version>0.12.6</jjwt.version>
         <minio.version>8.5.10</minio.version>
         <springdoc.version>2.3.0</springdoc.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
 
     <dependencies>
@@ -145,6 +147,13 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
+                    <!-- 强制 JVM 使用 UTF-8 —— 修复 Windows 下中文日志乱码 -->
+                    <jvmArguments>
+                        -Dfile.encoding=UTF-8
+                        -Dsun.jnu.encoding=UTF-8
+                        -Dstdout.encoding=UTF-8
+                        -Dstderr.encoding=UTF-8
+                    </jvmArguments>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>
