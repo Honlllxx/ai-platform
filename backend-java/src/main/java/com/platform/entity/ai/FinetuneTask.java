@@ -1,6 +1,7 @@
 package com.platform.entity.ai;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.platform.handler.JsonbTypeHandler;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -19,6 +20,7 @@ public class FinetuneTask {
     private Integer currentEpoch;
     private Double learningRate;
     private Double loss;
+    @TableField(typeHandler = JsonbTypeHandler.class)
     private String metrics;
     private String outputModel;
     private String errorMessage;
