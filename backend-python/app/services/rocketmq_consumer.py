@@ -15,19 +15,16 @@ import json
 import logging
 import threading
 import time
-from io import BytesIO
 from typing import Optional
 
-import cv2
 import numpy as np
-from PIL import Image
 from minio import Minio
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.services.graph_service import graph_service
 from app.services.rocketmq_producer import rocketmq_producer
+from app.services.document_converter import document_converter
 
 logger = logging.getLogger(__name__)
 
@@ -171,18 +168,22 @@ class RocketMQPipelineConsumer:
         file_url = task.get("fileUrl", "")
         metadata_fields = task.get("metadataFields") or []
         pipeline_id = task.get("pipelineId")
+        file_type = task.get("fileType", "")
 
         try:
-            # 1. Download file from MinIO
-            image = self._download_image(file_url)
-            if image is None:
+            # 1. Download file from MinIO and convert to pages
+            pages, conv_meta = self._download_pages(file_url, file_type)
+            if pages is None or len(pages) == 0:
                 self._send_failure(task_id, document_id, pipeline_id,
-                                   "Failed to download file from MinIO")
+                                   "Failed to download/convert file from MinIO")
                 return False
+
+            logger.info("Document converted: %d page(s), converter=%s",
+                        len(pages), conv_meta.get("converter_used", "unknown"))
 
             # 2. Run LangGraph pipeline (async → sync via asyncio)
             result = asyncio.run(self._run_pipeline(
-                image=image,
+                pages=pages,
                 metadata_fields=metadata_fields,
                 document_id=document_id,
                 task_id=task_id,
@@ -199,7 +200,7 @@ class RocketMQPipelineConsumer:
 
     async def _run_pipeline(
         self,
-        image: np.ndarray,
+        pages: list[np.ndarray],
         metadata_fields: list,
         document_id: int,
         task_id: str,
@@ -207,7 +208,7 @@ class RocketMQPipelineConsumer:
         """Execute the LangGraph pipeline with a DB session."""
         async with AsyncSessionLocal() as db:
             result = await graph_service.run(
-                image=image,
+                pages=pages,
                 metadata_fields=metadata_fields,
                 document_id=document_id,
                 db=db,
@@ -217,23 +218,19 @@ class RocketMQPipelineConsumer:
 
     # ── MinIO file download ───────────────────────────────────────
 
-    def _download_image(self, file_url: str) -> Optional[np.ndarray]:
-        """Download a document image from MinIO and decode to numpy array."""
+    def _download_pages(self, file_url: str, file_type: str = "") -> tuple[Optional[list[np.ndarray]], dict]:
+        """Download a document from MinIO and convert to page images using DocumentConverter."""
         if not file_url:
             logger.error("Empty file_url")
-            return None
+            return None, {}
 
         # file_url format: /{bucket}/documents/{date}/{uuid}.ext
-        # → object_name: documents/{date}/{uuid}.ext
         bucket = self.settings.minio_bucket
         object_name = file_url.lstrip("/")
-        # Remove bucket prefix if present (e.g. "/documents/..." → "documents/...")
         parts = object_name.split("/", 1)
         if parts[0] == bucket:
             object_name = parts[1] if len(parts) > 1 else object_name
         elif len(parts) > 1:
-            # file_url = "/documents/2026/07/uuid.pdf", bucket = "documents"
-            # → object_name = "2026/07/uuid.pdf"
             object_name = parts[1]
 
         try:
@@ -242,27 +239,23 @@ class RocketMQPipelineConsumer:
             response.close()
             response.release_conn()
 
-            # Determine file type and decode
-            if object_name.lower().endswith(".pdf"):
-                # PDF → read first page as image via Pillow + pdf2image fallback
-                # For now, try as image directly (supports image-based PDFs)
-                try:
-                    pil_image = Image.open(BytesIO(file_bytes)).convert("RGB")
-                    return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-                except Exception:
-                    logger.warning(
-                        "Cannot read PDF directly; install pdf2image for PDF support. "
-                        "file=%s", object_name
-                    )
-                    return None
-            else:
-                pil_image = Image.open(BytesIO(file_bytes)).convert("RGB")
-                return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+            # Determine file type from extension if not provided
+            if not file_type and "." in object_name:
+                ext = object_name.rsplit(".", 1)[-1].lower()
+                type_map = {
+                    "pdf": "pdf", "doc": "word", "docx": "word",
+                    "png": "image", "jpg": "image", "jpeg": "image",
+                    "bmp": "image", "tiff": "image", "tif": "image", "webp": "image",
+                }
+                file_type = type_map.get(ext, "image")
+
+            pages, meta = document_converter.convert(file_bytes, file_type, object_name)
+            return pages, meta
 
         except Exception as e:
-            logger.error("Failed to download/decode image from MinIO: %s/%s → %s",
+            logger.error("Failed to download/convert from MinIO: %s/%s → %s",
                          bucket, object_name, e)
-            return None
+            return None, {}
 
     # ── Result reporting ──────────────────────────────────────────
 
