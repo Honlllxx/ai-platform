@@ -228,8 +228,23 @@ function statusLabel(status: string) {
   return map[status] || status
 }
 
-function handleDownload(row: any) {
-  ElMessage.info(`下载 ${row.format.toUpperCase()} 文件 (${row.recordCount} 条记录)`)
+async function handleDownload(row: any) {
+  try {
+    const res: any = await exportData({ format: row.format, fields: row.fields })
+    // Try to handle as blob download or trigger from response
+    const blob = new Blob([JSON.stringify(res?.data || res, null, 2)], {
+      type: row.format === 'csv' ? 'text/csv' : 'application/json'
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `metadata-export-${new Date().toISOString().slice(0, 10)}.${row.format}`
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已下载 ${row.recordCount} 条记录`)
+  } catch {
+    ElMessage.warning('下载失败，请重试')
+  }
 }
 
 // Export history

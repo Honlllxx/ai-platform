@@ -167,8 +167,14 @@ function exportData() {
     extractedAt: new Date().toISOString(),
     confidence: extractionConfidence.value
   }
-  console.log('Table export data:', JSON.stringify(data, null, 2))
-  ElMessage.success('表格数据已输出到控制台')
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `table-${props.documentId}-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success('表格数据已导出')
 }
 
 function loadTableData() {

@@ -1,5 +1,7 @@
 <template>
-  <div class="page-container pipeline-detail">
+  <div class="page-container pipeline-detail" v-loading="loading">
+    <!-- Error state -->
+    <el-alert v-if="!loading && loadError" type="error" title="加载流水线详情失败" :closable="false" show-icon style="margin-bottom: 16px" />
     <!-- Page Header -->
     <div class="detail-header">
       <el-page-header @back="goBack" :title="'返回流水线列表'">
@@ -118,6 +120,7 @@ const router = useRouter()
 const pipelineId = computed(() => Number(route.params.id))
 const activeTab = ref('stateGraph')
 const loading = ref(false)
+const loadError = ref(false)
 
 const pipelineInfo = reactive<PipelineDetail>({
   id: 0,
@@ -184,79 +187,22 @@ function goBack() {
   router.push('/pipeline/list')
 }
 
-function loadPipelineDetail() {
+async function loadPipelineDetail() {
   loading.value = true
-  // Simulate pipeline detail data
-  pipelineInfo.id = pipelineId.value
-  pipelineInfo.documentId = 1001
-  pipelineInfo.documentName = `采购合同_v${pipelineId.value}.pdf`
-  pipelineInfo.status = 'completed'
-  pipelineInfo.currentStep = '数据校验'
-  pipelineInfo.totalSteps = 7
-  pipelineInfo.completedSteps = 7
-  pipelineInfo.duration = 145
-  pipelineInfo.startTime = '2026-06-29 09:15:30'
-  pipelineInfo.endTime = '2026-06-29 09:17:55'
+  loadError.value = false
 
-  pipelineInfo.stateGraph = {
-    nodes: [
-      { id: '1', label: '文档上传', type: 'tool', status: 'completed', duration: 2 },
-      { id: '2', label: 'OCR 识别', type: 'tool', status: 'completed', duration: 15 },
-      { id: '3', label: '版面分析', type: 'llm', status: 'completed', duration: 22 },
-      { id: '4', label: '表格检测', type: 'llm', status: 'completed', duration: 18 },
-      { id: '5', label: '字段提取', type: 'llm', status: 'completed', duration: 35 },
-      { id: '6', label: '数据校验', type: 'decision', status: 'completed', duration: 28 },
-      { id: '7', label: '结果输出', type: 'tool', status: 'completed', duration: 25 }
-    ],
-    edges: [
-      { from: '1', to: '2' },
-      { from: '2', to: '3' },
-      { from: '2', to: '4' },
-      { from: '3', to: '5' },
-      { from: '4', to: '5' },
-      { from: '5', to: '6' },
-      { from: '6', to: '7' }
-    ]
-  }
-
-  pipelineInfo.extractionResults = [
-    { id: 1, fieldName: '合同编号', extractedValue: 'HT-2026-00158', confidence: 0.98, status: 'verified' as const, pageRef: 1 },
-    { id: 2, fieldName: '甲方名称', extractedValue: '北京科技有限公司', confidence: 0.96, status: 'verified' as const, pageRef: 1 },
-    { id: 3, fieldName: '乙方名称', extractedValue: '上海信息技术有限公司', confidence: 0.95, status: 'verified' as const, pageRef: 1 },
-    { id: 4, fieldName: '合同金额', extractedValue: '1,200,000.00', confidence: 0.92, status: 'verified' as const, pageRef: 1 },
-    { id: 5, fieldName: '签订日期', extractedValue: '2026年6月15日', confidence: 0.88, status: 'uncertain' as const, pageRef: 1 },
-    { id: 6, fieldName: '交货地点', extractedValue: '北京市海淀区中关村科技园区', confidence: 0.85, status: 'uncertain' as const, pageRef: 1 },
-    { id: 7, fieldName: '付款方式', extractedValue: '分期付款（30%-40%-30%）', confidence: 0.72, status: 'uncertain' as const, pageRef: 2 },
-    { id: 8, fieldName: '质保期限', extractedValue: '三年', confidence: 0.65, status: 'rejected' as const, pageRef: 2 }
-  ]
-
-  pipelineInfo.validationReport = [
-    { id: 1, rule: '金额格式校验', field: '合同金额', severity: 'error' as const, message: '金额字段包含逗号分隔符，需转换为纯数字格式', suggestion: '建议移除金额中的逗号，统一转换为数字类型' },
-    { id: 2, rule: '日期格式校验', field: '签订日期', severity: 'warning' as const, message: '日期格式为中文格式，建议标准化为 ISO 8601 格式', suggestion: '建议转换为 YYYY-MM-DD 格式' },
-    { id: 3, rule: '必填字段检查', field: '卖方联系人', severity: 'error' as const, message: '合同未提取到卖方联系人信息', suggestion: '请检查合同附件或手动补充卖方联系人' },
-    { id: 4, rule: '质保期限校验', field: '质保期限', severity: 'warning' as const, message: '质保期限置信度过低 (0.65)，可能存在识别错误', suggestion: '建议人工复核质保条款内容' },
-    { id: 5, rule: '数值范围校验', field: '合同金额', severity: 'info' as const, message: '合同金额在正常范围内', suggestion: '' },
-    { id: 6, rule: '合同编号格式', field: '合同编号', severity: 'info' as const, message: '合同编号格式符合规范 (HT-YYYY-NNNNN)', suggestion: '' }
-  ]
-
-  pipelineInfo.reflectionData = [
-    { id: 1, fieldName: '合同金额', beforeValue: '1,200,000.00', afterValue: '1200000.00', reason: 'LLM 反思修正：文本中金额含千位分隔符，去除逗号转换为标准数字', timestamp: '2026-06-29 09:16:45' },
-    { id: 2, fieldName: '签订日期', beforeValue: '2026年6月15日', afterValue: '2026-06-15', reason: '日期标准化修正：将中文日期格式转换为 ISO 8601 格式', timestamp: '2026-06-29 09:17:05' },
-    { id: 3, fieldName: '付款方式', beforeValue: '分期付款（30%-40%-30%）', afterValue: '付款分三期：合同签订后7日内支付30%，设备到货验收后支付40%，项目终验后支付30%', reason: 'LLM 反思修正：付款方式需从合同条款中解读完整信息，原始提取过于简略', timestamp: '2026-06-29 09:17:20' }
-  ]
-
-  loading.value = false
-
-  // Try to fetch real data
-  if (pipelineId.value) {
-    getPipeline(pipelineId.value).then((res: any) => {
-      const data = res?.data || res
-      if (data && data.id) {
-        Object.assign(pipelineInfo, data)
-      }
-    }).catch(() => {
-      // Use mock data
-    })
+  try {
+    const res: any = await getPipeline(pipelineId.value)
+    const data = res?.data || res
+    if (data && data.id) {
+      Object.assign(pipelineInfo, data)
+    } else {
+      loadError.value = true
+    }
+  } catch {
+    loadError.value = true
+  } finally {
+    loading.value = false
   }
 }
 

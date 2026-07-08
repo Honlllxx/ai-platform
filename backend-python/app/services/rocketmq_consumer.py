@@ -88,10 +88,22 @@ class RocketMQPipelineConsumer:
 
     def _consume_loop(self):
         """Main consume loop with automatic reconnect."""
+        platform_errors = 0
         while self._running:
             try:
                 self._run_consumer()
             except Exception as e:
+                err_msg = str(e).lower()
+                # Don't retry on platform issues (Windows, missing native libs, etc.)
+                if any(kw in err_msg for kw in ("windows", "not support", "unsupported", "cannot", "dll", ".so", "librocketmq")):
+                    platform_errors += 1
+                    if platform_errors <= 1:
+                        logger.warning(
+                            "RocketMQ consumer unavailable on this platform (%s). "
+                            "AI pipeline will work via HTTP API only.", e
+                        )
+                    self._running = False
+                    break
                 logger.error("RocketMQ consumer error (retrying in 10s): %s", e)
                 if self._running:
                     time.sleep(10)

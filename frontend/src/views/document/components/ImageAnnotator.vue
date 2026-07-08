@@ -16,8 +16,16 @@
     <!-- Image Preview Area -->
     <div class="annotator-viewport" ref="viewportRef" @wheel.prevent="handleWheel">
       <div class="annotator-canvas" :style="canvasStyle">
-        <!-- Placeholder document image -->
-        <div class="doc-placeholder">
+        <!-- Real document image -->
+        <img
+          v-if="displayImageUrl"
+          :src="displayImageUrl"
+          alt="文档预览"
+          class="doc-image"
+          @error="handleImageError"
+        />
+        <!-- Placeholder when no image available -->
+        <div v-else class="doc-placeholder">
           <el-icon :size="56" color="#c0c4cc"><Document /></el-icon>
           <span class="placeholder-text">文档预览区域</span>
           <span class="placeholder-sub">支持 PDF、DOCX、图片等格式</span>
@@ -90,8 +98,14 @@ defineEmits<{
 
 const scale = ref(1)
 const hoveredId = ref<number | string | null>(null)
+const imageError = ref(false)
 const containerRef = ref<HTMLElement>()
 const viewportRef = ref<HTMLElement>()
+
+const displayImageUrl = computed(() => {
+  if (imageError.value) return null
+  return props.imageUrl || null
+})
 
 const canvasStyle = computed(() => ({
   transform: `scale(${scale.value})`,
@@ -147,6 +161,10 @@ function handleWheel(e: WheelEvent) {
       zoomOut()
     }
   }
+}
+
+function handleImageError() {
+  imageError.value = true
 }
 </script>
 
@@ -204,6 +222,14 @@ function handleWheel(e: WheelEvent) {
   min-height: 400px;
   background: #fff;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.doc-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .doc-placeholder {

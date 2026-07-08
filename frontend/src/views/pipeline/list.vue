@@ -88,6 +88,8 @@
         </el-table-column>
       </el-table>
 
+      <el-empty v-if="!loading && data.length === 0" description="暂无流水线记录" />
+
       <!-- Pagination -->
       <div class="pagination-wrap">
         <el-pagination

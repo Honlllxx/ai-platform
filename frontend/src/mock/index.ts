@@ -854,7 +854,7 @@ export function setupMock() {
     }
 
     // ==================== Model Assets ====================
-    if (url === '/models/assets' && method === 'get') {
+    if (url === '/models' && method === 'get') {
       let list = [...baseModels, ...loraAdapters, ...datasets]
       if (query.type) list = list.filter(m => m.type === query.type)
       const page = Number(query.page) || 1
@@ -863,14 +863,14 @@ export function setupMock() {
       return resolve(config, ok({ records: list.slice(start, start + pageSize), total: list.length }))
     }
 
-    if (url.match(/^\/models\/assets\/\d+$/) && method === 'get') {
+    if (url.match(/^\/models\/\d+$/) && method === 'get') {
       const id = Number(url.split('/').pop())
       const all = [...baseModels, ...loraAdapters, ...datasets]
       const model = all.find(m => m.id === id)
       return model ? resolve(config, ok(model)) : resolve(config, fail('资产不存在', 404))
     }
 
-    if (url === '/models/bindings' && method === 'get') {
+    if (url === '/models/bindings/list' && method === 'get') {
       const page = Number(query.page) || 1
       const pageSize = Number(query.pageSize) || 10
       const start = (page - 1) * pageSize

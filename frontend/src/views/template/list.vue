@@ -283,13 +283,7 @@ function generateMockData(): TemplateItem[] {
 }
 
 onMounted(() => {
-  if (import.meta.env.DEV) {
-    const mockData = generateMockData()
-    data.value = mockData
-    pagination.total = mockData.length
-  } else {
-    fetchData()
-  }
+  fetchData()
 })
 </script>
 

@@ -18,7 +18,7 @@ export interface PromptVersion {
 export interface PromptDiff {
   versionA: string
   versionB: string
-  diffLines: { type: 'added' | 'removed' | 'unchanged'; lineNumber: number; content: string }[]
+  diffLines: { type: 'added' | 'removed' | 'unchanged' | 'modified'; lineNumber: number; content: string }[]
 }
 
 export function getPromptVersions(params: { page: number; pageSize: number; documentType?: string; stage?: string }) {

@@ -328,7 +328,7 @@ async function handleCancel(row: FinetuneTask) {
     ElMessage.warning(`微调任务 "${row.taskName}" 已取消`)
     fetchData()
   } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error('取消失败: ' + (e?.message || '未知错误'))
+    if (e !== 'cancel') { /* Error handled by interceptor */ }
   }
 }
 
@@ -378,8 +378,8 @@ async function handleCreateTask() {
     dialogVisible.value = false
     pagination.page = 1
     fetchData()
-  } catch (e: any) {
-    ElMessage.error('创建失败: ' + (e?.message || '未知错误'))
+  } catch {
+    // Error already handled by Axios interceptor
   }
 }
 

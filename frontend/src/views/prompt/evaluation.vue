@@ -323,8 +323,8 @@ async function handleRunEvaluation() {
     dialogVisible.value = false
     pagination.page = 1
     fetchData()
-  } catch (e: any) {
-    ElMessage.error('创建评测失败: ' + (e?.message || '未知错误'))
+  } catch {
+    // Error already handled by Axios interceptor
   }
 }
 

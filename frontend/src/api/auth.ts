@@ -14,6 +14,9 @@ export interface LoginResult {
     username: string
     nickname: string
     avatar: string
+    email?: string
+    roles: string[]
+    permissions: string[]
   }
 }
 
@@ -31,16 +34,4 @@ export function refreshToken(refreshToken: string) {
 
 export function getCurrentUser() {
   return request.get('/auth/current-user')
-}
-
-export function getDashboardStats() {
-  return request.get('/dashboard/stats')
-}
-
-export function getOperationTrend() {
-  return request.get('/dashboard/operation-trend')
-}
-
-export function getOperationTypeDistribution() {
-  return request.get('/dashboard/operation-type-distribution')
 }

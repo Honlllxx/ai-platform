@@ -139,6 +139,8 @@
         </el-table-column>
       </el-table>
 
+      <el-empty v-if="!loading && data.length === 0" description="暂无文档" />
+
       <div class="pagination-wrap">
         <el-pagination
           v-model:current-page="pagination.page"

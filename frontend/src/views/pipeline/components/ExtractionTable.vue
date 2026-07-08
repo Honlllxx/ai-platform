@@ -139,8 +139,14 @@ function exportJson() {
     status: f.status,
     pageRef: f.pageRef
   }))
-  console.log('Extraction export:', JSON.stringify(data, null, 2))
-  ElMessage.success(`已导出 ${data.length} 条提取结果到控制台`)
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `extraction-${props.pipelineId}-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success(`已导出 ${data.length} 条提取结果`)
 }
 </script>
 

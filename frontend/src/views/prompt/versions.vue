@@ -444,7 +444,7 @@ async function handleSubmit() {
     pagination.page = 1
     fetchData()
   } catch (e: any) {
-    ElMessage.error('操作失败: ' + (e?.message || '未知错误'))
+    // Error already handled by Axios interceptor
   }
 }
 
@@ -460,7 +460,9 @@ async function handleActivate(row: PromptVersion) {
     ElMessage.success(`已将 "${row.name}" 设为当前生效版本`)
     fetchData()
   } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error('操作失败: ' + (e?.message || '未知错误'))
+    if (e !== 'cancel') {
+      // Error already handled by Axios interceptor for API failures
+    }
   }
 }
 
@@ -476,7 +478,9 @@ async function handleRollback(row: PromptVersion) {
     ElMessage.success(`已回滚到 "${row.name} (${row.version})"`)
     fetchData()
   } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error('回滚失败: ' + (e?.message || '未知错误'))
+    if (e !== 'cancel') {
+      // Error already handled by Axios interceptor for API failures
+    }
   }
 }
 

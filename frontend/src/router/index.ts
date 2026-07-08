@@ -9,10 +9,6 @@ const publicRoutes: RouteRecordRaw[] = [
     name: 'Login',
     component: () => import('@/views/login/index.vue'),
     meta: { title: '登录', hidden: true }
-  },
-  {
-    path: '/',
-    redirect: '/dashboard'
   }
 ]
 
@@ -23,7 +19,7 @@ const protectedRoutes: RouteRecordRaw[] = [
     path: '/dashboard',
     name: 'Dashboard',
     component: () => import('@/views/dashboard/index.vue'),
-    meta: { title: '仪表盘', icon: 'Odometer' }
+    meta: { title: '仪表盘', icon: 'Odometer', permission: 'dashboard:view' }
   },
 
   // ========== Document Management ==========
@@ -188,7 +184,7 @@ const protectedRoutes: RouteRecordRaw[] = [
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/settings/index.vue'),
-    meta: { title: '系统设置' }
+    meta: { title: '系统设置', permission: 'settings:view' }
   },
   {
     path: '/403',

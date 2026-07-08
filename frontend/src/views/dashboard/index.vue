@@ -140,6 +140,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import VChart from 'vue-echarts'
+import { ElMessage } from 'element-plus'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, PieChart, BarChart } from 'echarts/charts'
@@ -209,14 +210,17 @@ async function loadDashboard() {
       stats.avgProcessingTime = data.avgProcessingTime || 0
     }
   } catch {
-    stats.userCount = 128
-    stats.todayOperations = 356
-    stats.agentCalls = 89
-    stats.activeAgents = 5
-    stats.autoPassRate = 87.5
-    stats.manualCorrectionRate = 12.5
-    stats.costSavings = 158000
-    stats.avgProcessingTime = 3.2
+    if (import.meta.env.DEV) {
+      stats.userCount = 128
+      stats.todayOperations = 356
+      stats.agentCalls = 89
+      stats.activeAgents = 5
+      stats.autoPassRate = 87.5
+      stats.manualCorrectionRate = 12.5
+      stats.costSavings = 158000
+      stats.avgProcessingTime = 3.2
+    }
+    ElMessage.warning('统计数据加载失败，请稍后重试')
   }
 
   // Daily processing trend
@@ -254,16 +258,18 @@ async function loadDashboard() {
       ]
     }
   } catch {
-    dailyProcessingOption.value = {
-      tooltip: { trigger: 'axis' },
-      legend: { data: ['自动通过', '人工校正'], bottom: 0 },
-      grid: { left: '3%', right: '4%', bottom: '10%', containLabel: true },
-      xAxis: { type: 'category', data: ['06/23', '06/24', '06/25', '06/26', '06/27', '06/28', '06/29'], boundaryGap: false },
-      yAxis: { type: 'value', minInterval: 1 },
-      series: [
-        { name: '自动通过', type: 'line', smooth: true, data: [15, 19, 13, 25, 17, 22, 17], lineStyle: { color: '#67c23a', width: 2 }, itemStyle: { color: '#67c23a' } },
-        { name: '人工校正', type: 'line', smooth: true, data: [3, 3, 2, 3, 3, 3, 2], lineStyle: { color: '#e6a23c', width: 2 }, itemStyle: { color: '#e6a23c' } }
-      ]
+    if (import.meta.env.DEV) {
+      dailyProcessingOption.value = {
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['自动通过', '人工校正'], bottom: 0 },
+        grid: { left: '3%', right: '4%', bottom: '10%', containLabel: true },
+        xAxis: { type: 'category', data: ['06/23', '06/24', '06/25', '06/26', '06/27', '06/28', '06/29'], boundaryGap: false },
+        yAxis: { type: 'value', minInterval: 1 },
+        series: [
+          { name: '自动通过', type: 'line', smooth: true, data: [15, 19, 13, 25, 17, 22, 17], lineStyle: { color: '#67c23a', width: 2 }, itemStyle: { color: '#67c23a' } },
+          { name: '人工校正', type: 'line', smooth: true, data: [3, 3, 2, 3, 3, 3, 2], lineStyle: { color: '#e6a23c', width: 2 }, itemStyle: { color: '#e6a23c' } }
+        ]
+      }
     }
   }
 
@@ -287,13 +293,15 @@ async function loadDashboard() {
       }]
     }
   } catch {
-    docTypePieOption.value = {
-      tooltip: { trigger: 'item', formatter: '{b}: {c} 份 ({d}%)' },
-      legend: { orient: 'vertical', right: '5%', top: 'center' },
-      series: [{
-        name: '文档类型', type: 'pie', radius: ['45%', '75%'], center: ['40%', '50%'],
-        data: [{ name: '合同', value: 45 }, { name: '发票', value: 62 }, { name: '提单', value: 28 }, { name: '报关单', value: 15 }, { name: '其他', value: 8 }]
-      }]
+    if (import.meta.env.DEV) {
+      docTypePieOption.value = {
+        tooltip: { trigger: 'item', formatter: '{b}: {c} 份 ({d}%)' },
+        legend: { orient: 'vertical', right: '5%', top: 'center' },
+        series: [{
+          name: '文档类型', type: 'pie', radius: ['45%', '75%'], center: ['40%', '50%'],
+          data: [{ name: '合同', value: 45 }, { name: '发票', value: 62 }, { name: '提单', value: 28 }, { name: '报关单', value: 15 }, { name: '其他', value: 8 }]
+        }]
+      }
     }
   }
 
@@ -317,12 +325,14 @@ async function loadDashboard() {
       }]
     }
   } catch {
-    trendOption.value = {
-      tooltip: { trigger: 'axis' },
-      grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-      xAxis: { type: 'category', data: ['06/23', '06/24', '06/25', '06/26', '06/27', '06/28', '06/29'], boundaryGap: false },
-      yAxis: { type: 'value', minInterval: 1 },
-      series: [{ name: '操作次数', type: 'line', smooth: true, data: [42, 55, 38, 63, 48, 57, 53], lineStyle: { color: '#409eff', width: 2 }, itemStyle: { color: '#409eff' } }]
+    if (import.meta.env.DEV) {
+      trendOption.value = {
+        tooltip: { trigger: 'axis' },
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+        xAxis: { type: 'category', data: ['06/23', '06/24', '06/25', '06/26', '06/27', '06/28', '06/29'], boundaryGap: false },
+        yAxis: { type: 'value', minInterval: 1 },
+        series: [{ name: '操作次数', type: 'line', smooth: true, data: [42, 55, 38, 63, 48, 57, 53], lineStyle: { color: '#409eff', width: 2 }, itemStyle: { color: '#409eff' } }]
+      }
     }
   }
 
@@ -340,7 +350,7 @@ async function loadDashboard() {
         ]
       }]
     }
-  } catch { /* fallback already set */ }
+  } catch { /* No fallback — chart stays empty if API fails */ }
 }
 
 onMounted(() => {

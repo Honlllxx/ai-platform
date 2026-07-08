@@ -141,7 +141,7 @@
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
 import { Search, Refresh, View, Sort, Histogram } from '@element-plus/icons-vue'
-import { getAgentTraces, getTraceTree, type TraceInfo, type TraceNode } from '@/api/agent-trace'
+import { getAgentTraces, getAgentTraceById, type TraceInfo, type TraceNode } from '@/api/agent-trace'
 import { useTable } from '@/composables/useTable'
 import TraceTimeline from '@/components/trace/TraceTimeline.vue'
 import TraceGantt from '@/components/trace/TraceGantt.vue'
@@ -214,22 +214,20 @@ async function openDetail(trace: TraceInfo) {
   detailVisible.value = true
   viewMode.value = 'timeline'
 
-  // Load trace tree
+  // Load trace detail (includes tree nodes in response)
   loadingDetail.value = true
   try {
-    const res = await getTraceTree(trace.traceId)
-    traceNodes.value = (res?.data || res || []) as TraceNode[]
+    const res = await getAgentTraceById(trace.id)
+    const detail = res?.data || res
+    traceNodes.value = detail?.nodes || trace.nodes || []
+  } catch {
+    // Fallback: use nodes embedded in trace list object
+    traceNodes.value = trace.nodes || []
+  } finally {
     // Auto-expand all nodes
     const newSet = new Set<string>()
     expandAll(traceNodes.value, newSet)
     expandedNodes.value = newSet
-  } catch {
-    // If tree API fails, use nodes from trace object
-    traceNodes.value = trace.nodes || []
-    const newSet = new Set<string>()
-    expandAll(traceNodes.value, newSet)
-    expandedNodes.value = newSet
-  } finally {
     loadingDetail.value = false
   }
 }

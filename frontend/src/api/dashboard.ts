@@ -1,33 +1,30 @@
 import request from '@/utils/request'
 
 export interface DashboardStats {
-  totalDocuments: number
-  processingDocuments: number
-  completedDocuments: number
-  failedDocuments: number
-  totalPipelines: number
+  userCount: number
+  todayOperations: number
+  agentCalls: number
+  activeAgents: number
+  autoPassRate: number
+  manualCorrectionRate: number
+  costSavings: number
   avgProcessingTime: number
-  successRate: number
 }
 
 export interface DailyProcessing {
   date: string
-  count: number
-  completed: number
-  failed: number
+  autoPassed: number
+  manualCorrected: number
 }
 
 export interface DocTypeDistribution {
   type: string
-  count: number
-  percentage: number
+  value: number
 }
 
 export interface OperationTrend {
   date: string
-  uploads: number
-  pipelines: number
-  extractions: number
+  count: number
 }
 
 /** Get overview statistics for the dashboard. */

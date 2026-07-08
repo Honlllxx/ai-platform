@@ -119,6 +119,8 @@
         </el-table-column>
       </el-table>
 
+      <el-empty v-if="!loading && data.length === 0" description="暂无审核任务" />
+
       <div class="pagination-wrap">
         <el-pagination
           v-model:current-page="pagination.page"
@@ -135,7 +137,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search, Refresh, View, Clock, Select, TrendCharts } from '@element-plus/icons-vue'
 import { getReviews, type ReviewItem } from '@/api/review'
@@ -165,10 +167,13 @@ const stats = reactive({
 })
 
 function updateStats() {
-  stats.pendingCount = data.value.filter(d => d.status === 'pending').length
-  stats.todayReviewed = data.value.filter(d => d.status !== 'pending').length
-  const totalApproved = data.value.reduce((sum, d) => sum + d.approvedFields, 0)
-  const totalFields = data.value.reduce((sum, d) => sum + d.totalFields, 0)
+  // Note: stats are based on the currently loaded data (single page)
+  // For accurate site-wide stats, a dedicated backend aggregation endpoint is needed
+  const allData = data.value
+  stats.pendingCount = allData.filter((d: ReviewItem) => d.status === 'pending').length
+  stats.todayReviewed = allData.filter((d: ReviewItem) => d.status !== 'pending').length
+  const totalApproved = allData.reduce((sum: number, d: ReviewItem) => sum + d.approvedFields, 0)
+  const totalFields = allData.reduce((sum: number, d: ReviewItem) => sum + d.totalFields, 0)
   stats.approvalRate = totalFields > 0 ? Math.round((totalApproved / totalFields) * 100) : 0
 }
 
@@ -225,51 +230,14 @@ function handleStartReview(row: ReviewItem) {
   router.push(`/review/${row.id}`)
 }
 
-// Mock data generation for demo
-function generateMockData(): ReviewItem[] {
-  return [
-    {
-      id: 1, documentId: 101, documentName: '2026年度采购合同.pdf', documentType: 'contract',
-      status: 'pending', totalFields: 15, reviewedFields: 0, approvedFields: 0, rejectedFields: 0,
-      reviewer: undefined, reviewTime: undefined, createTime: '2026-06-29 09:15:00'
-    },
-    {
-      id: 2, documentId: 102, documentName: '技术服务协议_v3.docx', documentType: 'contract',
-      status: 'partial', totalFields: 12, reviewedFields: 8, approvedFields: 6, rejectedFields: 2,
-      reviewer: 'admin', reviewTime: '2026-06-29 10:45:00', createTime: '2026-06-29 08:30:00'
-    },
-    {
-      id: 3, documentId: 103, documentName: '增值税发票_0628.pdf', documentType: 'invoice',
-      status: 'approved', totalFields: 8, reviewedFields: 8, approvedFields: 8, rejectedFields: 0,
-      reviewer: 'zhangsan', reviewTime: '2026-06-28 16:20:00', createTime: '2026-06-28 14:00:00'
-    },
-    {
-      id: 4, documentId: 104, documentName: '海运提单_BL20260625.pdf', documentType: 'bill_of_lading',
-      status: 'pending', totalFields: 10, reviewedFields: 0, approvedFields: 0, rejectedFields: 0,
-      reviewer: undefined, reviewTime: undefined, createTime: '2026-06-29 11:00:00'
-    },
-    {
-      id: 5, documentId: 105, documentName: '设备租赁合同.pdf', documentType: 'contract',
-      status: 'rejected', totalFields: 14, reviewedFields: 14, approvedFields: 3, rejectedFields: 11,
-      reviewer: 'admin', reviewTime: '2026-06-28 11:30:00', createTime: '2026-06-28 09:00:00'
-    },
-    {
-      id: 6, documentId: 106, documentName: '普通发票_0627.pdf', documentType: 'invoice',
-      status: 'approved', totalFields: 6, reviewedFields: 6, approvedFields: 6, rejectedFields: 0,
-      reviewer: 'zhangsan', reviewTime: '2026-06-27 17:00:00', createTime: '2026-06-27 15:30:00'
-    },
-  ]
-}
+onMounted(async () => {
+  await fetchData()
+  updateStats()
+})
 
-onMounted(() => {
-  if (import.meta.env.DEV) {
-    const mockData = generateMockData()
-    data.value = mockData
-    pagination.total = mockData.length
-    updateStats()
-  } else {
-    fetchData()
-  }
+// Recalculate stats whenever data changes (search, pagination, etc.)
+watch(data, () => {
+  updateStats()
 })
 </script>
 

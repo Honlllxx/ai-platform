@@ -19,10 +19,14 @@ export const useUserStore = defineStore('user', () => {
       setRefreshToken(res.refreshToken)
     }
     setToken(res.token)
+    // Login endpoint returns flat { token, userInfo } — all fields available directly
+    userId.value = res.userInfo.id
     username.value = res.userInfo.username
     nickname.value = res.userInfo.nickname
-    avatar.value = res.userInfo.avatar
-    await fetchUserInfo()
+    avatar.value = res.userInfo.avatar || ''
+    roles.value = res.userInfo.roles || []
+    permissions.value = res.userInfo.permissions || []
+    // No fetchUserInfo() needed — login response already includes full user info
   }
 
   async function fetchUserInfo() {

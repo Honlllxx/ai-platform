@@ -404,15 +404,7 @@ function generateMockData(): MetadataField[] {
 }
 
 onMounted(() => {
-  // Simulate loading mock data for demo
-  if (import.meta.env.DEV) {
-    const mockData = generateMockData()
-    data.value = mockData
-    pagination.total = mockData.length
-    updateStats()
-  } else {
-    fetchData()
-  }
+  fetchData().then(() => updateStats())
 })
 </script>
 

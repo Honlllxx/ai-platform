@@ -1,5 +1,8 @@
 <template>
-  <div class="page-container document-detail">
+  <div class="page-container document-detail" v-loading="loading">
+    <!-- Error state -->
+    <el-alert v-if="loadError" type="error" title="加载文档信息失败" :closable="false" show-icon style="margin-bottom: 16px" />
+
     <!-- Document Header -->
     <div class="doc-header">
       <el-page-header @back="goBack" :title="'返回'">
@@ -56,6 +59,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Document, Picture, Reading, Grid } from '@element-plus/icons-vue'
+import { getDocument } from '@/api/document'
 import LayoutView from './components/LayoutView.vue'
 import OcrView from './components/OcrView.vue'
 import TableView from './components/TableView.vue'
@@ -64,6 +68,8 @@ const route = useRoute()
 const router = useRouter()
 
 const docId = computed(() => Number(route.params.id))
+const loading = ref(false)
+const loadError = ref(false)
 
 const docInfo = reactive({
   id: 0,
@@ -139,13 +145,22 @@ function goBack() {
   router.push('/documents')
 }
 
-function loadDocInfo() {
-  // Simulate loading document info
-  docInfo.id = docId.value
-  docInfo.name = `合同文档_${docId.value}.pdf`
-  docInfo.type = 'pdf'
-  docInfo.status = 'completed'
-  docInfo.uploadTime = '2026-06-28 14:30:00'
+async function loadDocInfo() {
+  loading.value = true
+  loadError.value = false
+  try {
+    const res = await getDocument(docId.value)
+    const data = res?.data || res
+    docInfo.id = data.id || docId.value
+    docInfo.name = data.fileName || data.name || `文档_${docId.value}`
+    docInfo.type = data.fileType || data.type || ''
+    docInfo.status = data.status || ''
+    docInfo.uploadTime = data.uploadTime || data.createdAt || ''
+  } catch {
+    loadError.value = true
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(() => {

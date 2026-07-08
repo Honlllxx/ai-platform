@@ -143,10 +143,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { usePermissionStore } from '@/stores/permission'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
-const permissionStore = usePermissionStore()
+const userStore = useUserStore()
 
 defineProps<{
   isCollapse: boolean
@@ -155,35 +155,35 @@ defineProps<{
 const activeMenu = computed(() => route.path)
 
 const hasDocumentAccess = computed(() =>
-  permissionStore.hasAnyPermission(['document:upload', 'document:list'])
+  userStore.hasAnyPermission(['document:upload', 'document:list'])
 )
 
 const hasPipelineAccess = computed(() =>
-  permissionStore.hasAnyPermission(['pipeline:list'])
+  userStore.hasAnyPermission(['pipeline:list'])
 )
 
 const hasBusinessAccess = computed(() =>
-  permissionStore.hasAnyPermission(['template:list', 'review:list'])
+  userStore.hasAnyPermission(['template:list', 'review:list'])
 )
 
 const hasMetadataAccess = computed(() =>
-  permissionStore.hasAnyPermission(['metadata:list', 'metadata:export'])
+  userStore.hasAnyPermission(['metadata:list', 'metadata:export'])
 )
 
 const hasPromptAccess = computed(() =>
-  permissionStore.hasAnyPermission(['prompt:version', 'prompt:evaluation'])
+  userStore.hasAnyPermission(['prompt:version', 'prompt:evaluation'])
 )
 
 const hasModelAccess = computed(() =>
-  permissionStore.hasAnyPermission(['finetune:list', 'model:list'])
+  userStore.hasAnyPermission(['finetune:list', 'model:list'])
 )
 
 const hasSystemAccess = computed(() =>
-  permissionStore.hasAnyPermission(['user:list', 'role:list', 'permission:list'])
+  userStore.hasAnyPermission(['user:list', 'role:list', 'permission:list'])
 )
 
 const hasLogAccess = computed(() =>
-  permissionStore.hasAnyPermission(['log:operation', 'log:agent'])
+  userStore.hasAnyPermission(['log:operation', 'log:agent'])
 )
 
 const variables = {
