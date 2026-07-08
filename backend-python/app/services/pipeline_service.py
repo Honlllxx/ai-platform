@@ -34,7 +34,7 @@ class PipelineService:
 
     async def run_full_pipeline(
         self,
-        image: np.ndarray,
+        pages: list[np.ndarray],
         metadata_fields: list[dict] | None = None,
         progress_callback: callable = None,
         document_id: int | None = None,
@@ -45,7 +45,7 @@ class PipelineService:
         Stages (7): preprocess → layout → OCR → table → LLM extract → validate → reflect
 
         Args:
-            image: BGR image as numpy array.
+            pages: List of BGR page images (one per page, converted by DocumentConverter).
             metadata_fields: list of field definitions for extraction.
             progress_callback: async callable(step, progress_pct, message).
             document_id: optional document ID for DB persistence.
@@ -61,45 +61,68 @@ class PipelineService:
             pipeline_id = await self._create_pipeline(db, document_id, task_id)
 
         try:
-            # ── Stage 1: Preprocess ──
-            await self._report(progress_callback, "preprocess", 5, "开始预处理...")
+            # ── Stage 1: Preprocess (per page) ──
+            await self._report(progress_callback, "preprocess", 5,
+                               f"开始预处理（共 {len(pages)} 页）...")
             if pipeline_id:
                 await self._update_pipeline(db, pipeline_id, "preprocess", 1)
-            processed, preprocess_meta = await asyncio.to_thread(
-                preprocess_service.process, image
-            )
-            timeline.append({"stage": "preprocess", "status": "done", "meta": preprocess_meta})
-            await self._report(progress_callback, "preprocess", 15, "预处理完成")
+            processed_pages: list[np.ndarray] = []
+            preprocess_meta_list = []
+            for page_idx, page in enumerate(pages):
+                proc, meta = await asyncio.to_thread(preprocess_service.process, page)
+                processed_pages.append(proc)
+                meta["page"] = page_idx + 1
+                preprocess_meta_list.append(meta)
+            timeline.append({"stage": "preprocess", "status": "done",
+                             "pages": len(processed_pages), "meta": preprocess_meta_list})
+            await self._report(progress_callback, "preprocess", 15,
+                               f"预处理完成（{len(processed_pages)} 页）")
 
-            # ── Stage 2: Layout analysis ──
+            # ── Stage 2: Layout analysis (per page) ──
             await self._report(progress_callback, "layout", 20, "版面分析中...")
             if pipeline_id:
                 await self._update_pipeline(db, pipeline_id, "layout", 2)
-            try:
-                regions = await asyncio.to_thread(layout_service.analyze, processed)
-            except Exception as layout_err:
-                regions = []
-                timeline.append({"stage": "layout", "status": "skipped", "error": str(layout_err)})
-                await self._report(progress_callback, "layout", 30, f"版面分析跳过: {layout_err}")
-            else:
-                timeline.append({"stage": "layout", "status": "done", "regions": len(regions)})
-                await self._report(progress_callback, "layout", 30, f"版面分析完成，检测到 {len(regions)} 个区域")
+            all_regions = []
+            for page_idx, proc in enumerate(processed_pages):
+                try:
+                    regions = await asyncio.to_thread(layout_service.analyze, proc)
+                except Exception as layout_err:
+                    regions = []
+                    timeline.append({"stage": "layout", "status": "skipped",
+                                     "page": page_idx + 1, "error": str(layout_err)})
+                else:
+                    # Annotate regions with page number
+                    for r in regions:
+                        r["page"] = page_idx + 1
+                    all_regions.extend(regions)
+            timeline.append({"stage": "layout", "status": "done",
+                             "pages": len(processed_pages), "regions": len(all_regions)})
+            await self._report(progress_callback, "layout", 30,
+                               f"版面分析完成，检测到 {len(all_regions)} 个区域")
 
-            # Persist layout
-            if pipeline_id and document_id and regions:
-                await self._persist_layout(db, document_id, regions)
+            # Persist layout (all pages)
+            if pipeline_id and document_id and all_regions:
+                await self._persist_layout(db, document_id, all_regions)
 
-            # ── Stage 3: OCR ──
+            # ── Stage 3: OCR (per page, with page markers) ──
             await self._report(progress_callback, "ocr", 35, "OCR 识别中...")
             if pipeline_id:
                 await self._update_pipeline(db, pipeline_id, "ocr", 3)
-            ocr_entries = await asyncio.to_thread(ocr_service.recognize, processed)
+            ocr_entries = []
+            for page_idx, proc in enumerate(processed_pages):
+                entries = await asyncio.to_thread(ocr_service.recognize, proc)
+                # Annotate each entry with page number
+                for e in entries:
+                    e["page"] = page_idx + 1
+                ocr_entries.extend(entries)
+
             total_chars = sum(len(e["text"]) for e in ocr_entries)
             avg_conf = (
                 sum(e["confidence"] for e in ocr_entries) / len(ocr_entries)
                 if ocr_entries else 0
             )
-            ocr_text = "\n".join(e["text"] for e in ocr_entries)
+            # Build OCR text with page markers for LLM context
+            ocr_text = self._build_page_ocr_text(ocr_entries)
             timeline.append({
                 "stage": "ocr",
                 "status": "done",
@@ -107,29 +130,37 @@ class PipelineService:
                 "total_chars": total_chars,
                 "avg_confidence": round(avg_conf, 4),
             })
-            await self._report(progress_callback, "ocr", 50, f"OCR 完成，识别到 {len(ocr_entries)} 条文本")
+            await self._report(progress_callback, "ocr", 50,
+                               f"OCR 完成，识别到 {len(ocr_entries)} 条文本（{len(pages)} 页）")
 
             # Persist OCR
             if pipeline_id and document_id:
-                await self._persist_ocr(db, document_id, ocr_entries, total_chars, round(avg_conf, 4))
+                await self._persist_ocr(db, document_id, ocr_entries, total_chars,
+                                        round(avg_conf, 4))
 
-            # ── Stage 4: Table extraction ──
+            # ── Stage 4: Table extraction (per page) ──
             await self._report(progress_callback, "table", 55, "表格提取中...")
             if pipeline_id:
                 await self._update_pipeline(db, pipeline_id, "table", 4)
-            try:
-                tables = await asyncio.to_thread(table_service.extract_tables, processed)
-            except Exception as table_err:
-                tables = []
-                timeline.append({"stage": "table", "status": "skipped", "error": str(table_err)})
-                await self._report(progress_callback, "table", 60, f"表格提取跳过: {table_err}")
-            else:
-                timeline.append({"stage": "table", "status": "done", "tables": len(tables)})
-                await self._report(progress_callback, "table", 60, f"表格提取完成，检测到 {len(tables)} 个表格")
+            all_tables = []
+            for page_idx, proc in enumerate(processed_pages):
+                try:
+                    tables = await asyncio.to_thread(table_service.extract_tables, proc)
+                except Exception as table_err:
+                    timeline.append({"stage": "table", "status": "skipped",
+                                     "page": page_idx + 1, "error": str(table_err)})
+                else:
+                    for t in tables:
+                        t["page"] = page_idx + 1
+                    all_tables.extend(tables)
+            timeline.append({"stage": "table", "status": "done",
+                             "pages": len(processed_pages), "tables": len(all_tables)})
+            await self._report(progress_callback, "table", 60,
+                               f"表格提取完成，检测到 {len(all_tables)} 个表格")
 
             # Persist tables
-            if pipeline_id and document_id and tables:
-                await self._persist_tables(db, document_id, tables)
+            if pipeline_id and document_id and all_tables:
+                await self._persist_tables(db, document_id, all_tables)
 
             # ── Stage 5: LLM Field Extraction ──
             await self._report(progress_callback, "extract", 65, "LLM 字段提取中...")
@@ -137,7 +168,8 @@ class PipelineService:
                 await self._update_pipeline(db, pipeline_id, "extract", 5)
             extraction = await self._extract_fields(ocr_entries, metadata_fields)
             timeline.append({"stage": "extract", "status": "done", "fields": len(extraction)})
-            await self._report(progress_callback, "extract", 75, f"LLM 提取完成，共 {len(extraction)} 个字段")
+            await self._report(progress_callback, "extract", 75,
+                               f"LLM 提取完成，共 {len(extraction)} 个字段")
 
             # Persist extraction results
             if pipeline_id:
@@ -208,14 +240,15 @@ class PipelineService:
                 "task_id": task_id,
                 "status": "completed",
                 "duration": duration,
-                "preprocess": preprocess_meta,
-                "layout": {"regions": regions},
+                "page_count": len(pages),
+                "preprocess": preprocess_meta_list,
+                "layout": {"regions": all_regions},
                 "ocr": {
                     "entries": ocr_entries,
                     "total_chars": total_chars,
                     "avg_confidence": round(avg_conf, 4),
                 },
-                "tables": tables,
+                "tables": all_tables,
                 "extraction": extraction,
                 "validations": validations,
                 "reflections": reflections,
@@ -251,7 +284,7 @@ class PipelineService:
         if not metadata_fields:
             return []
 
-        ocr_text = "\n".join(e["text"] for e in ocr_entries)
+        ocr_text = self._build_page_ocr_text(ocr_entries)
 
         # Build field schema block for the prompt template
         field_lines = []
@@ -301,6 +334,26 @@ class PipelineService:
 
         except Exception as e:
             return [{"error": str(e)}]
+
+    # ==================== OCR text formatting ====================
+
+    @staticmethod
+    def _build_page_ocr_text(ocr_entries: list[dict]) -> str:
+        """Build OCR text with page markers for multi-page documents.
+
+        Groups entries by their ``page`` key and inserts ``[Page N]`` headers
+        so the LLM can identify which page each field comes from.
+        """
+        page_groups: dict[int, list[str]] = {}
+        for e in ocr_entries:
+            pg = e.get("page", 1)
+            page_groups.setdefault(pg, []).append(e["text"])
+
+        parts = []
+        for pg in sorted(page_groups):
+            parts.append(f"\n[Page {pg}]\n")
+            parts.append("\n".join(page_groups[pg]))
+        return "\n".join(parts)
 
     # ==================== Progress reporting ====================
 
