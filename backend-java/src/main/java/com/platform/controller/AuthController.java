@@ -28,15 +28,9 @@ public class AuthController {
     private final PermissionMapper permissionMapper;
 
     @PostMapping("/login")
-    public Map<String, Object> login(@Valid @RequestBody LoginRequest request) {
+    public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         LoginResponse response = authService.login(request);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("code", 200);
-        result.put("token", response.getAccessToken());
-        result.put("refreshToken", response.getRefreshToken());
-        result.put("userInfo", response.getUserInfo());
-        result.put("message", "success");
-        return result;
+        return ApiResponse.success(response);
     }
 
     @PostMapping("/refresh")
