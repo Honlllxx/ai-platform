@@ -503,13 +503,18 @@ let templateIdSeq = 3
 export function nextTemplateId() { return ++templateIdSeq }
 
 // ==================== Review ====================
-export const reviews = Array.from({ length: 10 }, (_, i) => {
+export const reviews = Array.from({ length: 12 }, (_, i) => {
   const docIdx = (i + 5) % documents.length
   const totalFields = 8 + Math.floor(Math.random() * 8)
   const reviewedFields = Math.floor(Math.random() * totalFields)
   const approvedFields = Math.floor(Math.random() * reviewedFields)
   const rejectedFields = reviewedFields - approvedFields
-  const status = reviewedFields === 0 ? 'pending' : reviewedFields >= totalFields ? (rejectedFields === 0 ? 'approved' : 'rejected') : 'partial'
+  let status: string
+  if (i === 0) status = 'reviewing'
+  else if (i === 1) status = 'pending'
+  else if (reviewedFields === 0) status = 'pending'
+  else if (reviewedFields >= totalFields) status = rejectedFields === 0 ? 'approved' : 'partial'
+  else status = 'partial'
   return {
     id: i + 1,
     documentId: documents[docIdx].id,
@@ -523,8 +528,10 @@ export const reviews = Array.from({ length: 10 }, (_, i) => {
     rejectedFields,
     reviewerId: i < 5 ? 1 : null as number | null,
     reviewer: i < 5 ? 'admin' : undefined,
-    reviewTime: i < 5 ? `2026-06-${String(29 - i).padStart(2, '0')} 14:30:00` : undefined,
-    reviewedAt: i < 5 ? `2026-06-${String(29 - i).padStart(2, '0')} 14:30:00` : undefined,
+    startedAt: i === 0 ? `2026-07-10 09:30:00` : (i < 5 ? `2026-06-${String(29 - i).padStart(2, '0')} 14:00:00` : undefined),
+    reviewTime: i < 5 && i !== 0 ? `2026-06-${String(29 - i).padStart(2, '0')} 14:30:00` : undefined,
+    reviewedAt: i < 5 && i !== 0 ? `2026-06-${String(29 - i).padStart(2, '0')} 14:30:00` : undefined,
+    reviewComment: i < 5 && i > 0 ? `审核通过，${totalFields}个字段全部确认无误。` : (i === 0 ? undefined : undefined),
     createTime: `2026-06-${String(29 - i).padStart(2, '0')} 10:00:00`,
     updateTime: `2026-06-${String(29 - i).padStart(2, '0')} 10:00:00`
   }
@@ -547,10 +554,31 @@ reviews.forEach(r => {
 
 export const reviewHistory: Record<number, any[]> = {}
 reviews.forEach(r => {
-  reviewHistory[r.id] = r.reviewer ? [
-    { id: 1, action: '开始审核', operator: r.reviewer, timestamp: r.reviewTime!.replace('14:30', '14:00'), detail: '开始人工审核' },
-    { id: 2, action: '批量确认', operator: r.reviewer, timestamp: r.reviewTime!, detail: `一键通过了 ${r.approvedFields} 个字段` }
-  ] : []
+  if (!r.reviewer) { reviewHistory[r.id] = []; return }
+  const hist: any[] = []
+  // Assign
+  hist.push({ id: hist.length + 1, reviewId: r.id, action: 'assign', operatorId: 1, operator: r.reviewer, detail: '{"reviewer":"admin"}', timestamp: r.createTime, createTime: r.createTime })
+  // Start review
+  if (r.startedAt) {
+    hist.push({ id: hist.length + 1, reviewId: r.id, action: 'start_review', operatorId: 1, operator: r.reviewer, detail: '{"from":"pending","to":"reviewing"}', timestamp: r.startedAt, createTime: r.startedAt })
+  }
+  // Field actions
+  if (r.approvedFields > 0) {
+    for (let i = 0; i < Math.min(r.approvedFields, 3); i++) {
+      hist.push({ id: hist.length + 1, reviewId: r.id, fieldId: i + 1, action: 'approved', fieldName: `字段_${i + 1}`, operatorId: 1, operator: r.reviewer, detail: `{"fieldName":"字段_${i + 1}","oldStatus":"pending","newStatus":"approved"}`, timestamp: r.reviewedAt || r.reviewTime, createTime: r.reviewedAt || r.reviewTime })
+    }
+  }
+  if (r.rejectedFields > 0) {
+    for (let i = 0; i < Math.min(r.rejectedFields, 2); i++) {
+      hist.push({ id: hist.length + 1, reviewId: r.id, fieldId: r.approvedFields + i + 1, action: 'rejected', fieldName: `字段_${r.approvedFields + i + 1}`, operatorId: 1, operator: r.reviewer, detail: `{"fieldName":"字段_${r.approvedFields + i + 1}","oldStatus":"pending","newStatus":"rejected"}`, timestamp: r.reviewedAt || r.reviewTime, createTime: r.reviewedAt || r.reviewTime })
+    }
+  }
+  // Status change + comment
+  if (r.reviewComment) {
+    hist.push({ id: hist.length + 1, reviewId: r.id, action: 'comment', operatorId: 1, operator: r.reviewer, detail: `{"comment":"${r.reviewComment.replace(/"/g, "'")}"}`, timestamp: r.reviewedAt || r.reviewTime, createTime: r.reviewedAt || r.reviewTime })
+  }
+  hist.push({ id: hist.length + 1, reviewId: r.id, action: 'status_change', operatorId: 1, operator: r.reviewer, detail: `{"from":"reviewing","to":"${r.status}"}`, timestamp: r.reviewedAt || r.reviewTime, createTime: r.reviewedAt || r.reviewTime })
+  reviewHistory[r.id] = hist
 })
 
 // ==================== Prompt Versions ====================
