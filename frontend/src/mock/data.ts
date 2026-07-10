@@ -89,7 +89,15 @@ export const permissionTree = [
     id: 27, name: '业务配置', code: 'business', type: 'menu', parentId: null, path: '/templates', icon: 'EditPen', sort: 7, status: 1,
     children: [
       { id: 28, name: '模板配置', code: 'template:list', type: 'menu', parentId: 27, path: '/templates/list', icon: 'Crop', sort: 1, status: 1, children: [] },
-      { id: 29, name: '审核工作台', code: 'review:list', type: 'menu', parentId: 27, path: '/review/list', icon: 'Checked', sort: 2, status: 1, children: [] }
+      {
+        id: 29, name: '审核工作台', code: 'review', type: 'menu', parentId: 27, path: '/review/list', icon: 'Checked', sort: 2, status: 1,
+        children: [
+          { id: 291, name: '审核列表', code: 'review:list', type: 'menu', parentId: 29, path: '/review/list', icon: 'Checked', sort: 1, status: 1, children: [] },
+          { id: 292, name: '创建审核', code: 'review:create', type: 'button', parentId: 29, sort: 2, status: 1, children: [] },
+          { id: 293, name: '编辑审核', code: 'review:update', type: 'button', parentId: 29, sort: 3, status: 1, children: [] },
+          { id: 294, name: '删除审核', code: 'review:delete', type: 'button', parentId: 29, sort: 4, status: 1, children: [] }
+        ]
+      }
     ]
   },
   {
