@@ -48,10 +48,20 @@
         <el-icon><Crop /></el-icon>
         <span>模板配置</span>
       </el-menu-item>
-      <el-menu-item index="/review/list" v-permission="'review:list'">
-        <el-icon><Checked /></el-icon>
-        <span>审核工作台</span>
-      </el-menu-item>
+      <el-sub-menu index="review" v-permission="'review:list'">
+        <template #title>
+          <el-icon><Checked /></el-icon>
+          <span>审核工作台</span>
+        </template>
+        <el-menu-item index="/review/list">
+          <el-icon><List /></el-icon>
+          <span>审核列表</span>
+        </el-menu-item>
+        <el-menu-item index="/review/statistics">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>审核统计</span>
+        </el-menu-item>
+      </el-sub-menu>
     </el-sub-menu>
 
     <el-sub-menu index="metadata" v-if="hasMetadataAccess">
