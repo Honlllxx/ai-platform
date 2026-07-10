@@ -14,19 +14,18 @@ export const useUserStore = defineStore('user', () => {
 
   async function login(uname: string, password: string, remember = false) {
     const res = await loginApi({ username: uname, password, remember })
-    token.value = res.token
-    if (res.refreshToken) {
-      setRefreshToken(res.refreshToken)
+    const data = res.data || res
+    token.value = data.accessToken || data.token
+    if (data.refreshToken) {
+      setRefreshToken(data.refreshToken)
     }
-    setToken(res.token)
-    // Login endpoint returns flat { token, userInfo } — all fields available directly
-    userId.value = res.userInfo.id
-    username.value = res.userInfo.username
-    nickname.value = res.userInfo.nickname
-    avatar.value = res.userInfo.avatar || ''
-    roles.value = res.userInfo.roles || []
-    permissions.value = res.userInfo.permissions || []
-    // No fetchUserInfo() needed — login response already includes full user info
+    setToken(token.value)
+    userId.value = data.userInfo.id
+    username.value = data.userInfo.username
+    nickname.value = data.userInfo.nickname
+    avatar.value = data.userInfo.avatar || ''
+    roles.value = data.userInfo.roles || []
+    permissions.value = data.userInfo.permissions || []
   }
 
   async function fetchUserInfo() {
