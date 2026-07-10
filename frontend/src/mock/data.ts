@@ -513,6 +513,7 @@ export const reviews = Array.from({ length: 10 }, (_, i) => {
   return {
     id: i + 1,
     documentId: documents[docIdx].id,
+    pipelineId: null as number | null,
     documentName: documents[docIdx].fileName,
     documentType: documents[docIdx].fileType === 'pdf' ? 'contract' : documents[docIdx].fileType === 'jpg' ? 'invoice' : 'bill_of_lading',
     status,
@@ -520,9 +521,12 @@ export const reviews = Array.from({ length: 10 }, (_, i) => {
     reviewedFields,
     approvedFields,
     rejectedFields,
+    reviewerId: i < 5 ? 1 : null as number | null,
     reviewer: i < 5 ? 'admin' : undefined,
     reviewTime: i < 5 ? `2026-06-${String(29 - i).padStart(2, '0')} 14:30:00` : undefined,
-    createTime: `2026-06-${String(29 - i).padStart(2, '0')} 10:00:00`
+    reviewedAt: i < 5 ? `2026-06-${String(29 - i).padStart(2, '0')} 14:30:00` : undefined,
+    createTime: `2026-06-${String(29 - i).padStart(2, '0')} 10:00:00`,
+    updateTime: `2026-06-${String(29 - i).padStart(2, '0')} 10:00:00`
   }
 })
 
