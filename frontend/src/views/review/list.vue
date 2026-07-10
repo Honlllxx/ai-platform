@@ -10,18 +10,32 @@
 
     <!-- Stats row -->
     <el-row :gutter="16" class="stats-row">
-      <el-col :xs="24" :sm="6">
+      <el-col :xs="24" :sm="6" :md="5">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
             <div class="stat-info">
               <div class="stat-value">{{ stats.pendingCount }}</div>
-              <div class="stat-label">待审核</div>
+              <div class="stat-label">
+                待审核
+                <el-badge v-if="stats.pendingCount > 0" :value="stats.pendingCount" class="stat-badge" />
+              </div>
             </div>
             <el-icon :size="40" class="stat-icon" color="#409eff"><Clock /></el-icon>
           </div>
         </el-card>
       </el-col>
-      <el-col :xs="24" :sm="6">
+      <el-col :xs="24" :sm="6" :md="5">
+        <el-card shadow="hover" class="stat-card">
+          <div class="stat-content">
+            <div class="stat-info">
+              <div class="stat-value">{{ stats.reviewingCount }}</div>
+              <div class="stat-label">审核中</div>
+            </div>
+            <el-icon :size="40" class="stat-icon" color="#e6a23c"><Loading /></el-icon>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="6" :md="5">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
             <div class="stat-info">
@@ -32,7 +46,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :xs="24" :sm="6">
+      <el-col :xs="24" :sm="6" :md="5">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
             <div class="stat-info">
@@ -43,7 +57,7 @@
           </div>
         </el-card>
       </el-col>
-      <el-col :xs="24" :sm="6">
+      <el-col :xs="24" :sm="0" :md="4">
         <el-card shadow="hover" class="stat-card">
           <div class="stat-content">
             <div class="stat-info">
@@ -63,6 +77,7 @@
           <el-select v-model="query.status" placeholder="全部" clearable style="width: 140px;">
             <el-option label="全部" value="" />
             <el-option label="待审核" value="pending" />
+            <el-option label="审核中" value="reviewing" />
             <el-option label="已通过" value="approved" />
             <el-option label="已驳回" value="rejected" />
             <el-option label="部分通过" value="partial" />
@@ -255,6 +270,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, View, Clock, Select, TrendCharts, Document, Plus, User, Delete } from '@element-plus/icons-vue'
 import {
   getReviews, getReviewStats, createReview, assignReviewer, deleteReview,
+  startReview as startReviewApi,
   type ReviewItem, type ReviewStats
 } from '@/api/review'
 import { getDocuments } from '@/api/document'
@@ -278,8 +294,9 @@ const {
   defaultQuery: { status: '', documentType: '', keyword: '' }
 })
 
-const stats = reactive<ReviewStats>({
+const stats = reactive<ReviewStats & { reviewingCount: number }>({
   pendingCount: 0,
+  reviewingCount: 0,
   todayReviewed: 0,
   approvalRate: 0,
   totalReviews: 0
@@ -290,9 +307,11 @@ async function loadStats() {
     const res = await getReviewStats()
     const d = (res as any)?.data || res
     Object.assign(stats, d)
+    stats.reviewingCount = stats.reviewingCount || 0
   } catch {
     // Fallback to local computation
     stats.pendingCount = data.value.filter(d => d.status === 'pending').length
+    stats.reviewingCount = data.value.filter(d => d.status === 'reviewing').length
     stats.totalReviews = data.value.length
   }
 }
@@ -424,6 +443,7 @@ function docTypeLabel(type: string) {
 function statusTagType(status: string) {
   const map: Record<string, string> = {
     pending: 'info',
+    reviewing: '',
     approved: 'success',
     rejected: 'danger',
     partial: 'warning'
@@ -434,6 +454,7 @@ function statusTagType(status: string) {
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     pending: '待审核',
+    reviewing: '审核中',
     approved: '已通过',
     rejected: '已驳回',
     partial: '部分通过'
@@ -452,7 +473,16 @@ function progressColor(row: ReviewItem) {
   return '#409eff'
 }
 
-function handleStartReview(row: ReviewItem) {
+async function handleStartReview(row: ReviewItem) {
+  // Auto-start review if pending
+  if (row.status === 'pending') {
+    try {
+      await startReviewApi(row.id)
+      row.status = 'reviewing'
+    } catch {
+      // Continue to detail page even if start fails
+    }
+  }
   router.push(`/review/${row.id}`)
 }
 
