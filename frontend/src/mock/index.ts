@@ -617,6 +617,18 @@ export function setupMock() {
     }
 
     // ==================== Review ====================
+
+    // Stats
+    if (url === '/review/stats' && method === 'get') {
+      const pendingCount = reviews.filter(r => r.status === 'pending').length
+      const todayReviewed = reviews.filter(r => r.status !== 'pending').length
+      const totalFields = reviews.reduce((sum, r) => sum + r.totalFields, 0)
+      const totalApproved = reviews.reduce((sum, r) => sum + r.approvedFields, 0)
+      const approvalRate = totalFields > 0 ? Math.round((totalApproved / totalFields) * 100) : 0
+      return resolve(config, ok({ pendingCount, todayReviewed, approvalRate, totalReviews: reviews.length }))
+    }
+
+    // Create
     if (url === '/review' && method === 'post') {
       const newReview = {
         id: reviews.length + 1,
@@ -624,41 +636,99 @@ export function setupMock() {
         pipelineId: body.pipelineId || null,
         documentType: body.documentType || 'contract',
         documentName: '文档_' + (body.documentId || 1),
-        reviewerId: body.reviewerId || 1,
-        reviewer: 'admin',
+        reviewerId: body.reviewerId || null,
+        reviewer: body.reviewerId ? 'admin' : undefined,
         status: 'pending',
-        totalFields: 0,
+        totalFields: body.fields ? body.fields.length : 0,
         reviewedFields: 0,
         approvedFields: 0,
         rejectedFields: 0,
+        reviewTime: null,
         createTime: new Date().toISOString().replace('T', ' ').substring(0, 19),
         updateTime: new Date().toISOString().replace('T', ' ').substring(0, 19)
       }
+      if (body.fields) {
+        reviewFields[newReview.id] = body.fields.map((f: any, idx: number) => ({
+          id: idx + 1,
+          fieldName: f.fieldName,
+          fieldCode: f.fieldCode,
+          extractedValue: f.extractedValue,
+          confidence: f.confidence || 0,
+          status: 'pending',
+          imageRegion: f.imageRegion,
+          originalImageRegion: f.imageRegion
+        }))
+      }
       reviews.unshift(newReview as any)
-      return resolve(config, ok({ id: newReview.id, status: newReview.status }))
+      return resolve(config, ok({ id: newReview.id, status: newReview.status, totalFields: newReview.totalFields }))
     }
 
+    // List
     if (url === '/review' && method === 'get') {
       let list = [...reviews]
       if (query.status) list = list.filter(r => r.status === query.status)
       if (query.keyword) list = list.filter(r => r.documentName.includes(query.keyword))
+      if (query.documentType) list = list.filter(r => r.documentType === query.documentType)
       const page = Number(query.page) || 1
       const pageSize = Number(query.pageSize) || 10
       const start = (page - 1) * pageSize
       return resolve(config, ok({ records: list.slice(start, start + pageSize), total: list.length }))
     }
 
+    // Detail
     if (url.match(/^\/review\/\d+$/) && method === 'get') {
       const id = Number(url.split('/').pop())
       const review = reviews.find(r => r.id === id)
-      return review ? resolve(config, ok(review)) : resolve(config, fail('审核记录不存在', 404))
+      if (review) {
+        const fields = reviewFields[id] || []
+        return resolve(config, ok({ ...review, fields }))
+      }
+      return resolve(config, fail('审核记录不存在', 404))
     }
 
+    // Update status
+    if (url.match(/^\/review\/\d+\/status$/) && method === 'put') {
+      const id = Number(url.split('/')[url.split('/').length - 2])
+      const review = reviews.find(r => r.id === id)
+      if (review) {
+        review.status = body.status
+        review.updateTime = new Date().toISOString().replace('T', ' ').substring(0, 19)
+        return resolve(config, ok({ id: review.id, status: review.status }))
+      }
+      return resolve(config, fail('审核记录不存在', 404))
+    }
+
+    // Delete
+    if (url.match(/^\/review\/\d+$/) && method === 'delete') {
+      const id = Number(url.split('/').pop())
+      const idx = reviews.findIndex(r => r.id === id)
+      if (idx >= 0) {
+        reviews.splice(idx, 1)
+        return resolve(config, ok({ message: '删除成功' }))
+      }
+      return resolve(config, fail('审核记录不存在', 404))
+    }
+
+    // Assign reviewer
+    if (url.match(/^\/review\/\d+\/assign$/) && method === 'put') {
+      const id = Number(url.split('/')[url.split('/').length - 2])
+      const review = reviews.find(r => r.id === id)
+      if (review) {
+        review.reviewerId = body.reviewerId
+        review.reviewer = 'admin' // mock: always admin
+        review.updateTime = new Date().toISOString().replace('T', ' ').substring(0, 19)
+        return resolve(config, ok({ id: review.id, reviewerId: review.reviewerId, reviewer: review.reviewer }))
+      }
+      return resolve(config, fail('审核记录不存在', 404))
+    }
+
+    // Get fields
     if (url.match(/^\/review\/\d+\/fields$/) && method === 'get') {
       const id = Number(url.split('/')[url.split('/').length - 2])
       return resolve(config, ok(reviewFields[id] || []))
     }
 
+    // Approve field
     if (url.match(/^\/review\/\d+\/fields\/\d+\/approve$/) && method === 'post') {
       const parts = url.split('/')
       const reviewId = Number(parts[parts.length - 4])
@@ -666,11 +736,12 @@ export function setupMock() {
       const fields = reviewFields[reviewId]
       if (fields) {
         const field = fields.find((f: any) => f.id === fieldId)
-        if (field) { field.status = 'approved'; reviews[reviewId - 1].approvedFields++; reviews[reviewId - 1].reviewedFields++; }
+        if (field && field.status === 'pending') { field.status = 'approved'; reviews[reviewId - 1].approvedFields++; reviews[reviewId - 1].reviewedFields++; }
       }
       return resolve(config, ok({ message: '字段已确认' }))
     }
 
+    // Reject field
     if (url.match(/^\/review\/\d+\/fields\/\d+\/reject$/) && method === 'post') {
       const parts = url.split('/')
       const reviewId = Number(parts[parts.length - 4])
@@ -678,11 +749,12 @@ export function setupMock() {
       const fields = reviewFields[reviewId]
       if (fields) {
         const field = fields.find((f: any) => f.id === fieldId)
-        if (field) { field.status = 'rejected'; field.comment = body.comment; reviews[reviewId - 1].rejectedFields++; reviews[reviewId - 1].reviewedFields++; }
+        if (field && field.status === 'pending') { field.status = 'rejected'; field.comment = body.comment; reviews[reviewId - 1].rejectedFields++; reviews[reviewId - 1].reviewedFields++; }
       }
       return resolve(config, ok({ message: '字段已驳回' }))
     }
 
+    // Correct field
     if (url.match(/^\/review\/\d+\/fields\/\d+\/correct$/) && method === 'post') {
       const parts = url.split('/')
       const reviewId = Number(parts[parts.length - 4])
@@ -690,11 +762,12 @@ export function setupMock() {
       const fields = reviewFields[reviewId]
       if (fields) {
         const field = fields.find((f: any) => f.id === fieldId)
-        if (field) { field.status = 'corrected'; field.correctedValue = body.correctedValue; reviews[reviewId - 1].reviewedFields++; }
+        if (field && field.status === 'pending') { field.status = 'corrected'; field.correctedValue = body.correctedValue; reviews[reviewId - 1].reviewedFields++; }
       }
       return resolve(config, ok({ message: '字段已修正' }))
     }
 
+    // Batch approve
     if (url.match(/^\/review\/\d+\/batch-approve$/) && method === 'post') {
       const id = Number(url.split('/')[url.split('/').length - 2])
       const fields = reviewFields[id]
@@ -707,6 +780,7 @@ export function setupMock() {
       return resolve(config, ok({ message: `已批量确认 ${body.fieldIds.length} 个字段` }))
     }
 
+    // Batch reject
     if (url.match(/^\/review\/\d+\/batch-reject$/) && method === 'post') {
       const id = Number(url.split('/')[url.split('/').length - 2])
       const fields = reviewFields[id]
@@ -719,6 +793,7 @@ export function setupMock() {
       return resolve(config, ok({ message: `已批量驳回 ${body.fieldIds.length} 个字段` }))
     }
 
+    // History
     if (url.match(/^\/review\/\d+\/history$/) && method === 'get') {
       const id = Number(url.split('/')[url.split('/').length - 2])
       return resolve(config, ok(reviewHistory[id] || []))
