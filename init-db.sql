@@ -3,6 +3,8 @@
 -- 数据库初始化脚本 (PostgreSQL 16)
 -- ============================================================
 
+\encoding UTF8
+
 
 
 -- 先清空所有表（按依赖顺序）
@@ -561,11 +563,11 @@ INSERT INTO system_settings (setting_key, setting_value, category, description) 
 -- 7.1 默认用户
 -- 密码由 BCryptPasswordEncoder 生成，部署时替换
 INSERT INTO users (id, username, password, nickname, email, status) VALUES
-(1, 'admin',    '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5Eh', '超级管理员', 'admin@platform.com', 1),
-(2, 'zhangsan', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5Eh', '张三',       'zhangsan@test.com',  1),
-(3, 'zhaoliu',  '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5Eh', '赵六',       'zhaoliu@test.com',   1),
-(4, 'lisi',     '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5Eh', '李四',       'lisi@test.com',      1),
-(5, 'wangwu',   '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5Eh', '王五',       'wangwu@test.com',    0);
+(1, 'admin',    '$2b$10$sgqrEuV/qBKQ5N.Bgo6eCe.a/bDDHRRRIbAW2FdiCOe.DzxIGvGUy', '超级管理员', 'admin@platform.com', 1),
+(2, 'zhangsan', '$2b$10$sgqrEuV/qBKQ5N.Bgo6eCe.a/bDDHRRRIbAW2FdiCOe.DzxIGvGUy', '张三',       'zhangsan@test.com',  1),
+(3, 'zhaoliu',  '$2b$10$sgqrEuV/qBKQ5N.Bgo6eCe.a/bDDHRRRIbAW2FdiCOe.DzxIGvGUy', '赵六',       'zhaoliu@test.com',   1),
+(4, 'lisi',     '$2b$10$sgqrEuV/qBKQ5N.Bgo6eCe.a/bDDHRRRIbAW2FdiCOe.DzxIGvGUy', '李四',       'lisi@test.com',      1),
+(5, 'wangwu',   '$2b$10$sgqrEuV/qBKQ5N.Bgo6eCe.a/bDDHRRRIbAW2FdiCOe.DzxIGvGUy', '王五',       'wangwu@test.com',    0);
 
 -- 重置序列避免冲突
 SELECT setval('users_id_seq', 5);
@@ -596,7 +598,7 @@ INSERT INTO permissions (id, name, code, type, parent_id, path, icon, sort) VALU
 -- 审核工作台
 (9,  '审核工作台',   'review',                 'menu',   NULL, NULL,                        'Checked',        40),
 (10, '审核列表',     'review:list',            'menu',   9,    '/review/list',              NULL,             41),
-(11, '创建审核',     'review:create',         'button', 9,    NULL,                        NULL,             42),
+(110, '创建审核',     'review:create',         'button', 9,    NULL,                        NULL,             42),
 -- 元数据管理
 (11, '元数据管理',   'metadata',               'menu',   NULL, NULL,                        'Grid',           50),
 (12, '字段列表',     'metadata:list',          'menu',   11,   '/metadata/fields',          NULL,             51),

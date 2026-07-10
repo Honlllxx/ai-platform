@@ -10,6 +10,16 @@
         </el-tag>
       </div>
       <div class="review-header__right">
+        <!-- Start review button -->
+        <el-button
+          v-if="review.status === 'pending'"
+          type="warning"
+          :icon="VideoPlay"
+          :loading="startingReview"
+          @click="handleStartReview"
+        >
+          开始审核
+        </el-button>
         <!-- Reviewer assignment -->
         <div class="reviewer-section">
           <span class="reviewer-label">审核人:</span>
@@ -26,6 +36,9 @@
             {{ review.reviewer ? '更换' : '分配' }}
           </el-button>
         </div>
+        <span v-if="review.startedAt" class="review-started">
+          开始: {{ formatTime(review.startedAt) }}
+        </span>
         <span class="review-progress">
           进度: {{ review.reviewedFields }} / {{ review.totalFields }}
         </span>
@@ -123,6 +136,46 @@
       </div>
     </div>
 
+    <!-- Review comment -->
+    <div class="review-comment" v-if="review.status === 'reviewing' || review.status === 'approved' || review.status === 'rejected' || review.status === 'partial'">
+      <div class="comment-header">
+        <h3>审核意见</h3>
+        <el-button
+          v-if="!editingComment"
+          link
+          type="primary"
+          size="small"
+          :icon="Edit"
+          @click="startEditComment"
+        >
+          {{ review.reviewComment ? '编辑' : '填写' }}
+        </el-button>
+      </div>
+      <div v-if="editingComment" class="comment-edit">
+        <el-input
+          v-model="commentText"
+          type="textarea"
+          :rows="3"
+          placeholder="请输入审核意见..."
+          maxlength="500"
+          show-word-limit
+        />
+        <div class="comment-actions">
+          <el-button size="small" type="primary" :loading="savingComment" @click="handleSaveComment">
+            保存
+          </el-button>
+          <el-button size="small" @click="cancelEditComment">取消</el-button>
+        </div>
+      </div>
+      <div v-else-if="review.reviewComment" class="comment-content">
+        <el-icon><ChatLineSquare /></el-icon>
+        <span>{{ review.reviewComment }}</span>
+      </div>
+      <div v-else class="comment-content comment-content--empty">
+        暂无审核意见
+      </div>
+    </div>
+
     <!-- Review history -->
     <div class="review-history" v-if="reviewHistory.length > 0">
       <h3 class="history-title">审核记录</h3>
@@ -180,12 +233,13 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Select, CloseBold, PictureFilled, Switch, Finished } from '@element-plus/icons-vue'
+import { ArrowLeft, Select, CloseBold, PictureFilled, Switch, Finished, VideoPlay, Edit, ChatLineSquare } from '@element-plus/icons-vue'
 import {
   getReviewDetail, getReviewFields,
   approveField, rejectField, correctField,
   batchApprove, batchReject, getReviewHistory,
   assignReviewer, updateReviewStatus,
+  startReview as startReviewApi, saveReviewComment,
   type ReviewItem, type ReviewField
 } from '@/api/review'
 import { getUsers } from '@/api/user'
@@ -291,11 +345,67 @@ async function handleFinalize() {
   }
 }
 
+// ==================== Start Review ====================
+
+const startingReview = ref(false)
+
+async function handleStartReview() {
+  startingReview.value = true
+  try {
+    const res = await startReviewApi(reviewId.value)
+    const d = (res as any)?.data || res
+    review.status = d.status || 'reviewing'
+    review.startedAt = d.startedAt
+    ElMessage.success('开始审核')
+  } catch {
+    // Error handled by interceptor
+  } finally {
+    startingReview.value = false
+  }
+}
+
+// ==================== Review Comment ====================
+
+const editingComment = ref(false)
+const savingComment = ref(false)
+const commentText = ref('')
+
+function startEditComment() {
+  commentText.value = review.reviewComment || ''
+  editingComment.value = true
+}
+
+function cancelEditComment() {
+  editingComment.value = false
+  commentText.value = ''
+}
+
+async function handleSaveComment() {
+  savingComment.value = true
+  try {
+    await saveReviewComment(reviewId.value, commentText.value)
+    review.reviewComment = commentText.value
+    editingComment.value = false
+    ElMessage.success('审核意见已保存')
+    loadHistory()
+  } catch {
+    // Error handled by interceptor
+  } finally {
+    savingComment.value = false
+  }
+}
+
+function formatTime(time: string) {
+  if (!time) return ''
+  return new Date(time).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
 // ==================== Helpers ====================
 
 function statusTagType(status: string) {
   const map: Record<string, string> = {
     pending: 'info',
+    reviewing: '',
     approved: 'success',
     rejected: 'danger',
     partial: 'warning'
@@ -306,6 +416,7 @@ function statusTagType(status: string) {
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     pending: '待审核',
+    reviewing: '审核中',
     approved: '已通过',
     rejected: '已驳回',
     partial: '部分通过'
@@ -472,6 +583,8 @@ function historyIconType(action: string) {
     batch_approved: 'success',
     batch_rejected: 'danger',
     assign: 'info',
+    start_review: 'primary',
+    comment: 'info',
     status_change: 'primary'
   }
   return map[action] || 'info'
@@ -485,6 +598,8 @@ function historyActionTag(action: string) {
     batch_approved: 'success',
     batch_rejected: 'danger',
     assign: 'info',
+    start_review: 'primary',
+    comment: 'info',
     status_change: 'primary'
   }
   return map[action] || 'info'
@@ -498,6 +613,8 @@ function historyActionLabel(action: string) {
     batch_approved: '批量通过',
     batch_rejected: '批量驳回',
     assign: '分配审核人',
+    start_review: '开始审核',
+    comment: '审核意见',
     status_change: '状态变更'
   }
   return map[action] || action
@@ -550,7 +667,7 @@ async function loadReview() {
 
 async function loadHistory() {
   try {
-    const res = await getReviewHistory(reviewId.value)
+    const res = await getReviewHistory(reviewId.value, { page: 1, pageSize: 100 })
     const data = res?.data || res
     reviewHistory.value = data.records || data || []
   } catch {
@@ -824,5 +941,57 @@ onMounted(() => {
   font-size: 14px;
   color: $text-primary;
   font-weight: 500;
+}
+
+.review-started {
+  font-size: 12px;
+  color: $text-secondary;
+}
+
+// Review comment
+.review-comment {
+  padding: 16px 20px;
+  background: #fff;
+  border-top: 1px solid #e4e7ed;
+  flex-shrink: 0;
+
+  .comment-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: $text-primary;
+      margin: 0;
+    }
+  }
+
+  .comment-edit {
+    .comment-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+  }
+
+  .comment-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 14px;
+    color: $text-regular;
+    padding: 10px 12px;
+    background: #f5f7fa;
+    border-radius: 6px;
+    line-height: 1.6;
+
+    &--empty {
+      color: $text-placeholder;
+      font-style: italic;
+    }
+  }
 }
 </style>
