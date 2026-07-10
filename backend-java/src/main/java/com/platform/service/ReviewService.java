@@ -128,6 +128,11 @@ public class ReviewService {
                 new LambdaQueryWrapper<Review>().eq(Review::getStatus, "pending"));
         stats.put("pendingCount", pendingCount);
 
+        // Reviewing count
+        Long reviewingCount = reviewMapper.selectCount(
+                new LambdaQueryWrapper<Review>().eq(Review::getStatus, "reviewing"));
+        stats.put("reviewingCount", reviewingCount);
+
         // Today reviewed
         LocalDateTime todayStart = LocalDateTime.of(LocalDate.now(), LocalTime.MIN);
         LocalDateTime todayEnd = LocalDateTime.of(LocalDate.now(), LocalTime.MAX);
