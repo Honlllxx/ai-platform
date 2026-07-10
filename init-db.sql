@@ -282,7 +282,9 @@ CREATE TABLE reviews (
     approved_fields INT             NOT NULL DEFAULT 0,
     rejected_fields INT             NOT NULL DEFAULT 0,
     reviewer_id     BIGINT          REFERENCES users(id),
+    started_at      TIMESTAMPTZ,
     reviewed_at     TIMESTAMPTZ,
+    review_comment  TEXT,
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     deleted_at      TIMESTAMPTZ
