@@ -68,7 +68,7 @@ public class ReviewController {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("id", r.getId());
             map.put("documentId", r.getDocumentId());
-            map.put("documentName", docNameMap.getOrDefault(r.getDocumentId(), ""));
+            map.put("documentName", r.getDocumentId() != null ? docNameMap.getOrDefault(r.getDocumentId(), "") : "");
             map.put("pipelineId", r.getPipelineId());
             map.put("documentType", r.getDocumentType());
             map.put("status", r.getStatus());
@@ -113,9 +113,9 @@ public class ReviewController {
         map.put("createTime", r.getCreatedAt());
         map.put("updateTime", r.getUpdatedAt());
 
-        map.put("documentName", reviewService.getDocumentNameMap(
-                r.getDocumentId() != null ? Set.of(r.getDocumentId()) : Set.of())
-                .getOrDefault(r.getDocumentId(), ""));
+        String docName = r.getDocumentId() != null ? reviewService.getDocumentNameMap(
+                Set.of(r.getDocumentId())).getOrDefault(r.getDocumentId(), "") : "";
+        map.put("documentName", docName);
 
         map.put("reviewer", reviewService.getUserNameMap(
                 r.getReviewerId() != null ? Set.of(r.getReviewerId()) : Set.of())
