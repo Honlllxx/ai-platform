@@ -634,9 +634,12 @@ INSERT INTO permissions (id, name, code, type, parent_id, sort) VALUES
 (36, '编辑权限', 'permission:update',   'button', 23, 832),
 (37, '删除权限', 'permission:delete',   'button', 23, 833),
 -- 元数据操作
-(38, '编辑元数据', 'metadata:update',   'button', 11, 531);
+(38, '编辑元数据', 'metadata:update',   'button', 11, 531),
+-- 审核操作
+(39, '编辑审核', 'review:update',       'button', 9,  421),
+(40, '删除审核', 'review:delete',       'button', 9,  422);
 
-SELECT setval('permissions_id_seq', 39);
+SELECT setval('permissions_id_seq', 41);
 
 -- 7.4 角色-权限关联
 -- admin(1) 拥有所有权限
