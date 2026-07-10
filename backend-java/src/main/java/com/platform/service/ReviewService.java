@@ -185,19 +185,60 @@ public class ReviewService {
     // === Status Update ===
 
     @Transactional
+    public Review startReview(Long reviewId, Long operatorId) {
+        Review review = reviewMapper.selectById(reviewId);
+        if (review == null) return null;
+        if (!"pending".equals(review.getStatus())) return review;
+
+        review.setStatus("reviewing");
+        review.setStartedAt(LocalDateTime.now());
+        reviewMapper.updateById(review);
+
+        ReviewHistory history = new ReviewHistory();
+        history.setReviewId(reviewId);
+        history.setAction("start_review");
+        history.setOperatorId(operatorId);
+        history.setDetail("{\"from\":\"pending\",\"to\":\"reviewing\"}");
+        reviewHistoryMapper.insert(history);
+
+        return review;
+    }
+
+    @Transactional
+    public Review saveReviewComment(Long reviewId, String comment, Long operatorId) {
+        Review review = reviewMapper.selectById(reviewId);
+        if (review == null) return null;
+
+        review.setReviewComment(comment);
+        reviewMapper.updateById(review);
+
+        ReviewHistory history = new ReviewHistory();
+        history.setReviewId(reviewId);
+        history.setAction("comment");
+        history.setOperatorId(operatorId);
+        history.setDetail("{\"comment\":\"" + (comment != null ? comment.replace("\"", "'") : "") + "\"}");
+        reviewHistoryMapper.insert(history);
+
+        return review;
+    }
+
+    @Transactional
     public Review updateStatus(Long reviewId, String status, Long operatorId) {
         Review review = reviewMapper.selectById(reviewId);
         if (review == null) return null;
 
+        String oldStatus = review.getStatus();
         review.setStatus(status);
-        review.setReviewedAt(LocalDateTime.now());
+        if ("approved".equals(status) || "rejected".equals(status)) {
+            review.setReviewedAt(LocalDateTime.now());
+        }
         reviewMapper.updateById(review);
 
         ReviewHistory history = new ReviewHistory();
         history.setReviewId(reviewId);
         history.setAction("status_change");
         history.setOperatorId(operatorId);
-        history.setDetail("{\"from\":\"" + (review.getStatus() != null ? review.getStatus() : "pending") + "\",\"to\":\"" + status + "\"}");
+        history.setDetail("{\"from\":\"" + oldStatus + "\",\"to\":\"" + status + "\"}");
         reviewHistoryMapper.insert(history);
 
         return review;
@@ -247,6 +288,11 @@ public class ReviewService {
         // Update review counts — only increment when transitioning from pending
         Review review = reviewMapper.selectById(reviewId);
         if (review != null) {
+            // Auto-transition to "reviewing" on first field action
+            if (wasPending && "pending".equals(review.getStatus())) {
+                review.setStatus("reviewing");
+                review.setStartedAt(LocalDateTime.now());
+            }
             if (wasPending) {
                 review.setReviewedFields(review.getReviewedFields() + 1);
                 if ("approved".equals(status) || "corrected".equals(status)) {
@@ -316,6 +362,11 @@ public class ReviewService {
 
         // Update review counts
         if (review != null && count > 0) {
+            // Auto-transition to "reviewing" on first batch action
+            if ("pending".equals(review.getStatus())) {
+                review.setStatus("reviewing");
+                review.setStartedAt(LocalDateTime.now());
+            }
             review.setReviewedFields(review.getReviewedFields() + count);
             if ("approved".equals(status)) {
                 review.setApprovedFields(review.getApprovedFields() + count);
@@ -339,5 +390,109 @@ public class ReviewService {
                 new LambdaQueryWrapper<ReviewHistory>()
                         .eq(ReviewHistory::getReviewId, reviewId)
                         .orderByDesc(ReviewHistory::getCreatedAt));
+    }
+
+    public Page<ReviewHistory> getHistoryPage(Long reviewId, int page, int pageSize, String action) {
+        LambdaQueryWrapper<ReviewHistory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ReviewHistory::getReviewId, reviewId);
+        if (action != null && !action.isBlank()) {
+            wrapper.eq(ReviewHistory::getAction, action);
+        }
+        wrapper.orderByDesc(ReviewHistory::getCreatedAt);
+        return reviewHistoryMapper.selectPage(new Page<>(page, pageSize), wrapper);
+    }
+
+    // === Enhanced Statistics ===
+
+    public Map<String, Object> getStatistics(String startDate, String endDate, String documentType, Long reviewerId) {
+        Map<String, Object> stats = new LinkedHashMap<>();
+
+        LambdaQueryWrapper<Review> wrapper = new LambdaQueryWrapper<>();
+        if (startDate != null && !startDate.isBlank()) {
+            wrapper.ge(Review::getCreatedAt, LocalDateTime.of(LocalDate.parse(startDate), LocalTime.MIN));
+        }
+        if (endDate != null && !endDate.isBlank()) {
+            wrapper.le(Review::getCreatedAt, LocalDateTime.of(LocalDate.parse(endDate), LocalTime.MAX));
+        }
+        if (documentType != null && !documentType.isBlank()) {
+            wrapper.eq(Review::getDocumentType, documentType);
+        }
+        if (reviewerId != null) {
+            wrapper.eq(Review::getReviewerId, reviewerId);
+        }
+
+        List<Review> reviews = reviewMapper.selectList(wrapper);
+
+        // Status distribution
+        long pendingCount = reviews.stream().filter(r -> "pending".equals(r.getStatus())).count();
+        long reviewingCount = reviews.stream().filter(r -> "reviewing".equals(r.getStatus())).count();
+        long approvedCount = reviews.stream().filter(r -> "approved".equals(r.getStatus())).count();
+        long rejectedCount = reviews.stream().filter(r -> "rejected".equals(r.getStatus())).count();
+        long partialCount = reviews.stream().filter(r -> "partial".equals(r.getStatus())).count();
+
+        Map<String, Long> statusDistribution = new LinkedHashMap<>();
+        statusDistribution.put("pending", pendingCount);
+        statusDistribution.put("reviewing", reviewingCount);
+        statusDistribution.put("approved", approvedCount);
+        statusDistribution.put("rejected", rejectedCount);
+        statusDistribution.put("partial", partialCount);
+        stats.put("statusDistribution", statusDistribution);
+
+        // Document type distribution
+        Map<String, Long> docTypeDistribution = reviews.stream()
+                .filter(r -> r.getDocumentType() != null && !r.getDocumentType().isBlank())
+                .collect(Collectors.groupingBy(Review::getDocumentType, LinkedHashMap::new, Collectors.counting()));
+        stats.put("docTypeDistribution", docTypeDistribution);
+
+        // Reviewer performance
+        Set<Long> reviewerIds = reviews.stream()
+                .map(Review::getReviewerId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> reviewerNames = getUserNameMap(reviewerIds);
+        List<Map<String, Object>> reviewerStats = reviews.stream()
+                .filter(r -> r.getReviewerId() != null)
+                .collect(Collectors.groupingBy(Review::getReviewerId))
+                .entrySet().stream().map(e -> {
+                    Map<String, Object> rs = new LinkedHashMap<>();
+                    rs.put("reviewerId", e.getKey());
+                    rs.put("reviewer", reviewerNames.getOrDefault(e.getKey(), ""));
+                    rs.put("totalReviews", e.getValue().size());
+                    rs.put("approvedCount", e.getValue().stream().filter(r -> "approved".equals(r.getStatus())).count());
+                    rs.put("rejectedCount", e.getValue().stream().filter(r -> "rejected".equals(r.getStatus())).count());
+                    rs.put("partialCount", e.getValue().stream().filter(r -> "partial".equals(r.getStatus())).count());
+                    return rs;
+                }).collect(Collectors.toList());
+        stats.put("reviewerStats", reviewerStats);
+
+        // Daily trend (last 30 days)
+        LocalDate thirtyDaysAgo = LocalDate.now().minusDays(30);
+        List<Review> recentReviews = reviews.stream()
+                .filter(r -> r.getCreatedAt() != null && r.getCreatedAt().toLocalDate().isAfter(thirtyDaysAgo.minusDays(1)))
+                .collect(Collectors.toList());
+        Map<LocalDate, Long> dailyCounts = recentReviews.stream()
+                .collect(Collectors.groupingBy(r -> r.getCreatedAt().toLocalDate(), Collectors.counting()));
+        Map<LocalDate, Long> dailyCompleted = recentReviews.stream()
+                .filter(r -> "approved".equals(r.getStatus()) || "rejected".equals(r.getStatus()) || "partial".equals(r.getStatus()))
+                .collect(Collectors.groupingBy(r -> r.getReviewedAt() != null ? r.getReviewedAt().toLocalDate() : r.getCreatedAt().toLocalDate(), Collectors.counting()));
+
+        List<Map<String, Object>> dailyTrend = new ArrayList<>();
+        for (int i = 30; i >= 0; i--) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            Map<String, Object> day = new LinkedHashMap<>();
+            day.put("date", date.toString());
+            day.put("created", dailyCounts.getOrDefault(date, 0L));
+            day.put("completed", dailyCompleted.getOrDefault(date, 0L));
+            dailyTrend.add(day);
+        }
+        stats.put("dailyTrend", dailyTrend);
+
+        // Summary
+        stats.put("totalCount", reviews.size());
+        long totalFields = reviews.stream().mapToLong(r -> r.getTotalFields() != null ? r.getTotalFields() : 0).sum();
+        long totalApproved = reviews.stream().mapToLong(r -> r.getApprovedFields() != null ? r.getApprovedFields() : 0).sum();
+        stats.put("totalFields", totalFields);
+        stats.put("totalApproved", totalApproved);
+        stats.put("overallApprovalRate", totalFields > 0 ? Math.round((double) totalApproved / totalFields * 100) : 0);
+
+        return stats;
     }
 }
