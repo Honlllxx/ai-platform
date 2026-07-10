@@ -257,7 +257,7 @@ import {
   getReviews, getReviewStats, createReview, assignReviewer, deleteReview,
   type ReviewItem, type ReviewStats
 } from '@/api/review'
-import { getDocumentList } from '@/api/document'
+import { getDocuments } from '@/api/document'
 import { getUsers } from '@/api/user'
 import { useTable } from '@/composables/useTable'
 
@@ -317,7 +317,7 @@ const userList = ref<any[]>([])
 
 async function loadDocuments() {
   try {
-    const res = await getDocumentList({ page: 1, pageSize: 200 })
+    const res = await getDocuments({ page: 1, pageSize: 200 })
     const d = (res as any)?.data || res
     documents.value = d.records || d || []
   } catch { /* ignore */ }
