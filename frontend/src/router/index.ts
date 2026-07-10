@@ -116,6 +116,12 @@ const protectedRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/review/detail.vue'),
     meta: { title: '审核详情', hidden: true, permission: 'review:list' }
   },
+  {
+    path: '/review/statistics',
+    name: 'ReviewStatistics',
+    component: () => import('@/views/review/statistics.vue'),
+    meta: { title: '审核统计', permission: 'review:list' }
+  },
 
   // ========== Prompt Engineering ==========
   {
