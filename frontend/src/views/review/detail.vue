@@ -10,6 +10,22 @@
         </el-tag>
       </div>
       <div class="review-header__right">
+        <!-- Reviewer assignment -->
+        <div class="reviewer-section">
+          <span class="reviewer-label">审核人:</span>
+          <span v-if="review.reviewer" class="reviewer-name">{{ review.reviewer }}</span>
+          <el-button
+            v-if="!review.reviewer || review.status === 'pending'"
+            link
+            type="primary"
+            size="small"
+            :icon="Switch"
+            @click="showAssignDialog = true"
+            v-permission="'review:update'"
+          >
+            {{ review.reviewer ? '更换' : '分配' }}
+          </el-button>
+        </div>
         <span class="review-progress">
           进度: {{ review.reviewedFields }} / {{ review.totalFields }}
         </span>
@@ -28,27 +44,33 @@
       <div class="review-preview-panel">
         <div class="preview-header">
           <span>文档预览</span>
+          <el-tag v-if="review.documentType" size="small" :type="docTypeTagType(review.documentType)">
+            {{ docTypeLabel(review.documentType) }}
+          </el-tag>
         </div>
         <div class="preview-content">
-          <!-- Document placeholder with field positions -->
-          <div class="document-preview">
-            <div class="document-preview__placeholder">
-              <el-icon :size="64" color="#c0c4cc"><PictureFilled /></el-icon>
-              <p>文档图片预览</p>
-              <p class="preview-hint">{{ review.documentName }}</p>
-            </div>
-
+          <!-- Document image if available -->
+          <div class="document-preview" v-if="imageUrl">
+            <img :src="imageUrl" class="document-preview__image" alt="文档预览" />
             <!-- Field position overlays -->
             <div
               v-for="field in reviewFields"
               :key="field.id"
-              v-show="field.originalImageRegion"
+              v-show="fieldOverlayStyle(field)"
               class="field-overlay"
               :class="fieldOverlayClass(field)"
               :style="fieldOverlayStyle(field)"
               :title="field.fieldName"
             >
               <span class="field-overlay__label">{{ field.fieldName }}</span>
+            </div>
+          </div>
+          <!-- Placeholder -->
+          <div class="document-preview" v-else>
+            <div class="document-preview__placeholder">
+              <el-icon :size="64" color="#c0c4cc"><PictureFilled /></el-icon>
+              <p>文档图片预览</p>
+              <p class="preview-hint">{{ review.documentName }}</p>
             </div>
           </div>
         </div>
@@ -58,6 +80,7 @@
       <div class="review-work-panel">
         <FieldCompare
           :fields="reviewFields"
+          :document-url="imageUrl"
           @approve="handleApprove"
           @reject="handleReject"
           @correct="handleCorrect"
@@ -89,6 +112,14 @@
         >
           全部驳回
         </el-button>
+        <el-button
+          type="primary"
+          :icon="Finished"
+          :disabled="review.status === 'approved' || review.status === 'rejected'"
+          @click="handleFinalize"
+        >
+          完成审核
+        </el-button>
       </div>
     </div>
 
@@ -104,7 +135,7 @@
           placement="top"
         >
           <div class="history-item">
-            <span class="history-item__field">{{ item.fieldName }}</span>
+            <span class="history-item__field" v-if="item.fieldName">{{ item.fieldName }}</span>
             <el-tag size="small" :type="historyActionTag(item.action)">
               {{ historyActionLabel(item.action) }}
             </el-tag>
@@ -119,6 +150,29 @@
         </el-timeline-item>
       </el-timeline>
     </div>
+
+    <!-- Assign Reviewer Dialog -->
+    <el-dialog v-model="showAssignDialog" title="分配审核人" width="450px" :close-on-click-modal="false">
+      <el-form :model="assignForm" ref="assignFormRef" label-width="80px">
+        <el-form-item label="审核任务">
+          <span class="assign-doc-name">{{ review.documentName }}</span>
+        </el-form-item>
+        <el-form-item label="审核人" prop="reviewerId">
+          <el-select v-model="assignForm.reviewerId" placeholder="请选择审核人" filterable style="width: 100%;">
+            <el-option
+              v-for="user in userList"
+              :key="user.id"
+              :label="`${user.username} (${user.nickname || user.username})`"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showAssignDialog = false">取消</el-button>
+        <el-button type="primary" :loading="assigning" @click="handleAssign">确认分配</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -126,13 +180,15 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Select, CloseBold, PictureFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, Select, CloseBold, PictureFilled, Switch, Finished } from '@element-plus/icons-vue'
 import {
   getReviewDetail, getReviewFields,
   approveField, rejectField, correctField,
   batchApprove, batchReject, getReviewHistory,
+  assignReviewer, updateReviewStatus,
   type ReviewItem, type ReviewField
 } from '@/api/review'
+import { getUsers } from '@/api/user'
 import FieldCompare from '@/components/review/FieldCompare.vue'
 
 const route = useRoute()
@@ -151,12 +207,20 @@ const review = reactive<ReviewItem>({
   approvedFields: 0,
   rejectedFields: 0,
   reviewer: '',
+  reviewerId: undefined,
   reviewTime: '',
   createTime: ''
 })
 
 const reviewFields = ref<ReviewField[]>([])
 const reviewHistory = ref<any[]>([])
+const imageUrl = computed(() => {
+  // Try to construct document image URL from documentId
+  if (review.documentId) {
+    return `/api/documents/${review.documentId}/file`
+  }
+  return ''
+})
 
 const fieldProgress = computed(() => {
   if (review.totalFields === 0) return 0
@@ -172,6 +236,62 @@ const progressColor = computed(() => {
 const pendingCount = computed(() =>
   reviewFields.value.filter(f => f.status === 'pending').length
 )
+
+// ==================== Assignment ====================
+
+const showAssignDialog = ref(false)
+const assigning = ref(false)
+const assignForm = reactive({ reviewerId: null as number | null })
+const userList = ref<any[]>([])
+
+async function loadUsers() {
+  try {
+    const res = await getUsers({ page: 1, pageSize: 200 })
+    const d = (res as any)?.data || res
+    userList.value = (d.records || d || []).filter((u: any) => u.status !== 0)
+  } catch { /* ignore */ }
+}
+
+async function handleAssign() {
+  if (!assignForm.reviewerId) return
+  assigning.value = true
+  try {
+    const res = await assignReviewer(reviewId.value, assignForm.reviewerId)
+    const d = (res as any)?.data || res
+    review.reviewerId = d.reviewerId
+    review.reviewer = d.reviewer
+    showAssignDialog.value = false
+    ElMessage.success('审核人分配成功')
+  } catch {
+    // Error handled by interceptor
+  } finally {
+    assigning.value = false
+  }
+}
+
+// ==================== Finalize ====================
+
+async function handleFinalize() {
+  try {
+    const remaining = pendingCount.value
+    const message = remaining > 0
+      ? `还有 ${remaining} 个字段未审核，确认完成审核？`
+      : '确认完成审核？'
+    await ElMessageBox.confirm(message, '完成审核', {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await updateReviewStatus(reviewId.value, review.status === 'partial' ? 'partial' : 'approved')
+    review.status = review.status === 'partial' ? 'partial' : 'approved'
+    ElMessage.success('审核已完成')
+    loadHistory()
+  } catch {
+    // Cancelled
+  }
+}
+
+// ==================== Helpers ====================
 
 function statusTagType(status: string) {
   const map: Record<string, string> = {
@@ -193,6 +313,24 @@ function statusLabel(status: string) {
   return map[status] || status
 }
 
+function docTypeTagType(type: string) {
+  const map: Record<string, string> = {
+    contract: 'success',
+    invoice: 'warning',
+    bill_of_lading: 'danger'
+  }
+  return map[type] || ''
+}
+
+function docTypeLabel(type: string) {
+  const map: Record<string, string> = {
+    contract: '合同',
+    invoice: '发票',
+    bill_of_lading: '提单'
+  }
+  return map[type] || type
+}
+
 function fieldOverlayClass(field: ReviewField) {
   return {
     'field-overlay--pending': field.status === 'pending',
@@ -203,12 +341,13 @@ function fieldOverlayClass(field: ReviewField) {
 }
 
 function fieldOverlayStyle(field: ReviewField) {
-  if (!field.originalImageRegion) return {}
+  const region = field.originalImageRegion
+  if (!region || typeof region === 'string') return null
   return {
-    left: field.originalImageRegion.x + 'px',
-    top: field.originalImageRegion.y + 'px',
-    width: field.originalImageRegion.width + 'px',
-    height: field.originalImageRegion.height + 'px'
+    left: region.x + 'px',
+    top: region.y + 'px',
+    width: region.width + 'px',
+    height: region.height + 'px'
   }
 }
 
@@ -327,48 +466,64 @@ async function handleBatchReject() {
 
 function historyIconType(action: string) {
   const map: Record<string, string> = {
-    approve: 'success',
-    reject: 'danger',
-    correct: 'warning',
-    batch_approve: 'success',
-    batch_reject: 'danger'
+    approved: 'success',
+    rejected: 'danger',
+    corrected: 'warning',
+    batch_approved: 'success',
+    batch_rejected: 'danger',
+    assign: 'info',
+    status_change: 'primary'
   }
   return map[action] || 'info'
 }
 
 function historyActionTag(action: string) {
   const map: Record<string, string> = {
-    approve: 'success',
-    reject: 'danger',
-    correct: 'warning',
-    batch_approve: 'success',
-    batch_reject: 'danger'
+    approved: 'success',
+    rejected: 'danger',
+    corrected: 'warning',
+    batch_approved: 'success',
+    batch_rejected: 'danger',
+    assign: 'info',
+    status_change: 'primary'
   }
   return map[action] || 'info'
 }
 
 function historyActionLabel(action: string) {
   const map: Record<string, string> = {
-    approve: '确认',
-    reject: '驳回',
-    correct: '修正',
-    batch_approve: '批量通过',
-    batch_reject: '批量驳回'
+    approved: '确认',
+    rejected: '驳回',
+    corrected: '修正',
+    batch_approved: '批量通过',
+    batch_rejected: '批量驳回',
+    assign: '分配审核人',
+    status_change: '状态变更'
   }
   return map[action] || action
 }
 
 function goBack() {
-  router.push('/review')
+  router.push('/review/list')
 }
 
 async function loadReview() {
   try {
     const res = await getReviewDetail(reviewId.value)
     const data = res?.data || res
-    if (data) Object.assign(review, data)
+    if (data) {
+      Object.assign(review, data)
+      if (data.fields) {
+        reviewFields.value = data.fields.map((f: any) => ({
+          ...f,
+          originalImageRegion: typeof f.originalImageRegion === 'string'
+            ? JSON.parse(f.originalImageRegion)
+            : f.originalImageRegion
+        }))
+      }
+    }
   } catch {
-    // Use mock data
+    // Use mock fallback
     Object.assign(review, {
       id: reviewId.value,
       documentId: 101,
@@ -381,16 +536,6 @@ async function loadReview() {
       rejectedFields: 0,
       createTime: '2026-06-29 09:15:00'
     })
-  }
-}
-
-async function loadFields() {
-  try {
-    const res = await getReviewFields(reviewId.value)
-    const data = res?.data || res
-    reviewFields.value = data.records || data || []
-  } catch {
-    // Use mock fields
     reviewFields.value = [
       { id: 1, fieldName: '合同编号', fieldCode: 'contract_no', extractedValue: 'HT-2026-08812', confidence: 0.95, status: 'pending', originalImageRegion: { x: 80, y: 40, width: 200, height: 35 } },
       { id: 2, fieldName: '合同金额', fieldCode: 'contract_amount', extractedValue: '￥580,000.00', confidence: 0.72, status: 'pending', originalImageRegion: { x: 80, y: 300, width: 180, height: 35 } },
@@ -409,15 +554,14 @@ async function loadHistory() {
     const data = res?.data || res
     reviewHistory.value = data.records || data || []
   } catch {
-    // No mock history for fresh review
     reviewHistory.value = []
   }
 }
 
 onMounted(() => {
   loadReview()
-  loadFields()
   loadHistory()
+  loadUsers()
 })
 </script>
 
@@ -449,7 +593,7 @@ onMounted(() => {
   &__right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
 
     .review-progress {
       font-size: 13px;
@@ -462,6 +606,23 @@ onMounted(() => {
     font-size: 18px;
     font-weight: 600;
     color: $text-primary;
+  }
+}
+
+.reviewer-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  .reviewer-label {
+    font-size: 13px;
+    color: $text-secondary;
+  }
+
+  .reviewer-name {
+    font-size: 13px;
+    color: $text-primary;
+    font-weight: 500;
   }
 }
 
@@ -482,6 +643,9 @@ onMounted(() => {
   background: #f5f7fa;
 
   .preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 10px 16px;
     font-size: 14px;
     font-weight: 600;
@@ -507,6 +671,13 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+
+  &__image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 4px;
+  }
 
   &__placeholder {
     display: flex;
@@ -647,5 +818,11 @@ onMounted(() => {
       color: $primary-color;
     }
   }
+}
+
+.assign-doc-name {
+  font-size: 14px;
+  color: $text-primary;
+  font-weight: 500;
 }
 </style>
