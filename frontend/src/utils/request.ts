@@ -40,14 +40,16 @@ instance.interceptors.response.use(
     return data
   },
   async (error: AxiosError) => {
+    // 尝试从响应体中提取服务端错误消息
+    const serverMsg = (error.response?.data as any)?.message
     if (error.response?.status === 401) {
       removeToken()
-      ElMessage.error('登录已过期，请重新登录')
+      ElMessage.error(serverMsg || '登录已过期，请重新登录')
       router.push('/login')
     } else if (error.response?.status === 403) {
-      ElMessage.error('没有权限执行此操作')
+      ElMessage.error(serverMsg || '没有权限执行此操作')
     } else {
-      ElMessage.error(error.message || '网络错误')
+      ElMessage.error(serverMsg || error.message || '网络错误')
     }
     return Promise.reject(error)
   }
