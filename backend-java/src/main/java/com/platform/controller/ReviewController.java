@@ -77,7 +77,7 @@ public class ReviewController {
             map.put("approvedFields", r.getApprovedFields());
             map.put("rejectedFields", r.getRejectedFields());
             map.put("reviewerId", r.getReviewerId());
-            map.put("reviewer", userNameMap.getOrDefault(r.getReviewerId(), ""));
+            map.put("reviewer", r.getReviewerId() != null ? userNameMap.getOrDefault(r.getReviewerId(), "") : "");
             map.put("reviewedAt", r.getReviewedAt());
             map.put("reviewTime", r.getReviewedAt());
             map.put("createTime", r.getCreatedAt());
@@ -117,9 +117,9 @@ public class ReviewController {
                 Set.of(r.getDocumentId())).getOrDefault(r.getDocumentId(), "") : "";
         map.put("documentName", docName);
 
-        map.put("reviewer", reviewService.getUserNameMap(
-                r.getReviewerId() != null ? Set.of(r.getReviewerId()) : Set.of())
-                .getOrDefault(r.getReviewerId(), ""));
+        map.put("reviewer", r.getReviewerId() != null
+                ? reviewService.getUserNameMap(Set.of(r.getReviewerId())).getOrDefault(r.getReviewerId(), "")
+                : "");
 
         List<ReviewField> fields = reviewService.getFields(id);
         map.put("fields", fields.stream().map(f -> {
