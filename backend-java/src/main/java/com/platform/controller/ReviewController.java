@@ -24,6 +24,16 @@ public class ReviewController {
     private final ReviewService reviewService;
     private final JwtTokenProvider jwtTokenProvider;
 
+    // ==================== Stats ====================
+
+    @GetMapping("/stats")
+    @PreAuthorize("hasAuthority('review:list')")
+    public ApiResponse<Map<String, Object>> stats() {
+        return ApiResponse.success(reviewService.getStats());
+    }
+
+    // ==================== CRUD ====================
+
     @PostMapping
     @PreAuthorize("hasAuthority('review:create')")
     public ApiResponse<Map<String, Object>> create(@RequestBody Map<String, Object> body) {
@@ -31,6 +41,7 @@ public class ReviewController {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", r.getId());
         result.put("status", r.getStatus());
+        result.put("totalFields", r.getTotalFields());
         return ApiResponse.success(result);
     }
 
@@ -40,11 +51,11 @@ public class ReviewController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String documentType) {
+            @RequestParam(required = false) String documentType,
+            @RequestParam(required = false) String keyword) {
 
-        Page<Review> reviewPage = reviewService.pageQuery(page, pageSize, status, documentType);
+        Page<Review> reviewPage = reviewService.pageQuery(page, pageSize, status, documentType, keyword);
 
-        // Batch fetch document names and reviewer names
         Set<Long> docIds = reviewPage.getRecords().stream()
                 .map(Review::getDocumentId).filter(Objects::nonNull).collect(Collectors.toSet());
         Set<Long> reviewerIds = reviewPage.getRecords().stream()
@@ -68,6 +79,7 @@ public class ReviewController {
             map.put("reviewerId", r.getReviewerId());
             map.put("reviewer", userNameMap.getOrDefault(r.getReviewerId(), ""));
             map.put("reviewedAt", r.getReviewedAt());
+            map.put("reviewTime", r.getReviewedAt());
             map.put("createTime", r.getCreatedAt());
             map.put("updateTime", r.getUpdatedAt());
             return map;
@@ -97,20 +109,18 @@ public class ReviewController {
         map.put("rejectedFields", r.getRejectedFields());
         map.put("reviewerId", r.getReviewerId());
         map.put("reviewedAt", r.getReviewedAt());
+        map.put("reviewTime", r.getReviewedAt());
         map.put("createTime", r.getCreatedAt());
         map.put("updateTime", r.getUpdatedAt());
 
-        // Document name
         map.put("documentName", reviewService.getDocumentNameMap(
                 r.getDocumentId() != null ? Set.of(r.getDocumentId()) : Set.of())
                 .getOrDefault(r.getDocumentId(), ""));
 
-        // Reviewer name
         map.put("reviewer", reviewService.getUserNameMap(
                 r.getReviewerId() != null ? Set.of(r.getReviewerId()) : Set.of())
                 .getOrDefault(r.getReviewerId(), ""));
 
-        // Review fields
         List<ReviewField> fields = reviewService.getFields(id);
         map.put("fields", fields.stream().map(f -> {
             Map<String, Object> fm = new LinkedHashMap<>();
@@ -123,11 +133,60 @@ public class ReviewController {
             fm.put("correctedValue", f.getCorrectedValue());
             fm.put("comment", f.getComment());
             fm.put("imageRegion", f.getImageRegion());
+            fm.put("originalImageRegion", f.getImageRegion());
             return fm;
         }).collect(Collectors.toList()));
 
         return ApiResponse.success(map);
     }
+
+    @PutMapping("/{id}/status")
+    @PreAuthorize("hasAuthority('review:update')")
+    public ApiResponse<Map<String, Object>> updateStatus(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        String status = (String) body.get("status");
+        Long operatorId = getCurrentUserId(request);
+        Review r = reviewService.updateStatus(id, status, operatorId);
+        if (r == null) return ApiResponse.error(404, "审核记录不存在");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", r.getId());
+        result.put("status", r.getStatus());
+        return ApiResponse.success(result);
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('review:delete')")
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        boolean deleted = reviewService.deleteReview(id);
+        return deleted ? ApiResponse.success() : ApiResponse.error(404, "审核记录不存在");
+    }
+
+    // ==================== Assignment ====================
+
+    @PutMapping("/{id}/assign")
+    @PreAuthorize("hasAuthority('review:update')")
+    public ApiResponse<Map<String, Object>> assign(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        Long reviewerId = body.get("reviewerId") != null
+                ? ((Number) body.get("reviewerId")).longValue() : null;
+        if (reviewerId == null) {
+            return ApiResponse.error(400, "reviewerId 不能为空");
+        }
+        Long operatorId = getCurrentUserId(request);
+        Review r = reviewService.assignReviewer(id, reviewerId, operatorId);
+        if (r == null) return ApiResponse.error(404, "审核记录不存在");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", r.getId());
+        result.put("reviewerId", r.getReviewerId());
+        result.put("reviewer", reviewService.getUserNameMap(Set.of(reviewerId)).getOrDefault(reviewerId, ""));
+        return ApiResponse.success(result);
+    }
+
+    // ==================== Fields ====================
 
     @GetMapping("/{id}/fields")
     @PreAuthorize("hasAuthority('review:list')")
@@ -144,6 +203,7 @@ public class ReviewController {
             fm.put("correctedValue", f.getCorrectedValue());
             fm.put("comment", f.getComment());
             fm.put("imageRegion", f.getImageRegion());
+            fm.put("originalImageRegion", f.getImageRegion());
             return fm;
         }).collect(Collectors.toList());
         return ApiResponse.success(records);
@@ -224,17 +284,24 @@ public class ReviewController {
         return ApiResponse.success();
     }
 
+    // ==================== History ====================
+
     @GetMapping("/{id}/history")
     @PreAuthorize("hasAuthority('review:list')")
     public ApiResponse<List<Map<String, Object>>> history(@PathVariable Long id) {
         List<ReviewHistory> histories = reviewService.getHistory(id);
+        Map<Long, String> userNameMap = reviewService.getUserNameMap(
+                histories.stream().map(ReviewHistory::getOperatorId)
+                        .filter(Objects::nonNull).collect(Collectors.toSet()));
         List<Map<String, Object>> records = histories.stream().map(h -> {
             Map<String, Object> hm = new LinkedHashMap<>();
             hm.put("id", h.getId());
             hm.put("fieldId", h.getFieldId());
             hm.put("action", h.getAction());
             hm.put("operatorId", h.getOperatorId());
+            hm.put("operator", userNameMap.getOrDefault(h.getOperatorId(), ""));
             hm.put("detail", h.getDetail());
+            hm.put("timestamp", h.getCreatedAt());
             hm.put("createTime", h.getCreatedAt());
             return hm;
         }).collect(Collectors.toList());
