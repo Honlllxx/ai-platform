@@ -6,15 +6,17 @@ export interface ReviewItem {
   documentName: string
   pipelineId?: number
   documentType: string
-  status: 'pending' | 'approved' | 'rejected' | 'partial'
+  status: 'pending' | 'reviewing' | 'approved' | 'rejected' | 'partial'
   totalFields: number
   reviewedFields: number
   approvedFields: number
   rejectedFields: number
   reviewerId?: number
   reviewer?: string
+  startedAt?: string
   reviewTime?: string
   reviewedAt?: string
+  reviewComment?: string
   createTime: string
   updateTime?: string
 }
@@ -59,6 +61,15 @@ export function getReviewStats() {
   return request.get<ReviewStats>('/review/stats')
 }
 
+export function getReviewStatistics(params?: {
+  startDate?: string
+  endDate?: string
+  documentType?: string
+  reviewerId?: number
+}) {
+  return request.get('/review/statistics', { params })
+}
+
 // ==================== CRUD ====================
 
 export function getReviews(params: {
@@ -93,6 +104,16 @@ export function assignReviewer(id: number, reviewerId: number) {
   return request.put(`/review/${id}/assign`, { reviewerId })
 }
 
+// ==================== Workflow ====================
+
+export function startReview(id: number) {
+  return request.post(`/review/${id}/start`)
+}
+
+export function saveReviewComment(id: number, comment: string) {
+  return request.put(`/review/${id}/comment`, { comment })
+}
+
 // ==================== Fields ====================
 
 export function getReviewFields(reviewId: number) {
@@ -121,6 +142,10 @@ export function batchReject(reviewId: number, fieldIds: number[]) {
 
 // ==================== History ====================
 
-export function getReviewHistory(reviewId: number) {
-  return request.get(`/review/${reviewId}/history`)
+export function getReviewHistory(reviewId: number, params?: {
+  page?: number
+  pageSize?: number
+  action?: string
+}) {
+  return request.get(`/review/${reviewId}/history`, { params })
 }
