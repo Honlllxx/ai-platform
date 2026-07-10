@@ -18,7 +18,9 @@ public class Review {
     private Integer approvedFields;
     private Integer rejectedFields;
     private Long reviewerId;
+    private LocalDateTime startedAt;
     private LocalDateTime reviewedAt;
+    private String reviewComment;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
