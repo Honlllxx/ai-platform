@@ -28,6 +28,18 @@ const delay = (ms = 200) => new Promise(r => setTimeout(r, ms))
 export function setupMock() {
   const originalAdapter: AxiosAdapter = request.defaults.adapter as AxiosAdapter
 
+  const actionLabelMap: Record<string, string> = {
+    assign: '分配审核人',
+    start_review: '开始审核',
+    approved: '字段确认',
+    rejected: '字段驳回',
+    corrected: '字段修正',
+    batch_approved: '批量通过',
+    batch_rejected: '批量驳回',
+    comment: '审核意见',
+    status_change: '状态变更'
+  }
+
   request.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
     const url = config.url || ''
     const method = (config.method || 'get').toLowerCase()
@@ -621,11 +633,61 @@ export function setupMock() {
     // Stats
     if (url === '/review/stats' && method === 'get') {
       const pendingCount = reviews.filter(r => r.status === 'pending').length
-      const todayReviewed = reviews.filter(r => r.status !== 'pending').length
+      const reviewingCount = reviews.filter(r => r.status === 'reviewing').length
+      const todayReviewed = reviews.filter(r => r.status !== 'pending' && r.status !== 'reviewing').length
       const totalFields = reviews.reduce((sum, r) => sum + r.totalFields, 0)
       const totalApproved = reviews.reduce((sum, r) => sum + r.approvedFields, 0)
       const approvalRate = totalFields > 0 ? Math.round((totalApproved / totalFields) * 100) : 0
-      return resolve(config, ok({ pendingCount, todayReviewed, approvalRate, totalReviews: reviews.length }))
+      return resolve(config, ok({ pendingCount, reviewingCount, todayReviewed, approvalRate, totalReviews: reviews.length }))
+    }
+
+    // Statistics
+    if (url === '/review/statistics' && method === 'get') {
+      let list = [...reviews]
+      if (query.startDate) list = list.filter(r => r.createTime >= query.startDate)
+      if (query.endDate) list = list.filter(r => r.createTime <= query.endDate + ' 23:59:59')
+      if (query.documentType) list = list.filter(r => r.documentType === query.documentType)
+      if (query.reviewerId) list = list.filter(r => r.reviewerId === Number(query.reviewerId))
+
+      const statusDistribution = {
+        pending: list.filter(r => r.status === 'pending').length,
+        reviewing: list.filter(r => r.status === 'reviewing').length,
+        approved: list.filter(r => r.status === 'approved').length,
+        rejected: list.filter(r => r.status === 'rejected').length,
+        partial: list.filter(r => r.status === 'partial').length
+      }
+      const docTypeDistribution: Record<string, number> = {}
+      list.forEach(r => { const t = r.documentType; if (t) docTypeDistribution[t] = (docTypeDistribution[t] || 0) + 1 })
+      const totalFields = list.reduce((sum, r) => sum + r.totalFields, 0)
+      const totalApproved = list.reduce((sum, r) => sum + r.approvedFields, 0)
+      const reviewerStats = Object.values(
+        list.filter(r => r.reviewerId).reduce((acc: Record<string, any>, r) => {
+          const k = String(r.reviewerId)
+          if (!acc[k]) acc[k] = { reviewerId: r.reviewerId, reviewer: r.reviewer, totalReviews: 0, approvedCount: 0, rejectedCount: 0, partialCount: 0 }
+          acc[k].totalReviews++
+          if (r.status === 'approved') acc[k].approvedCount++
+          if (r.status === 'rejected') acc[k].rejectedCount++
+          if (r.status === 'partial') acc[k].partialCount++
+          return acc
+        }, {})
+      )
+      // Daily trend (last 30 days)
+      const dailyTrend: any[] = []
+      for (let i = 30; i >= 0; i--) {
+        const d = new Date(); d.setDate(d.getDate() - i)
+        const ds = d.toISOString().substring(0, 10)
+        dailyTrend.push({ date: ds, created: Math.floor(Math.random() * 5), completed: Math.floor(Math.random() * 3) })
+      }
+      return resolve(config, ok({
+        totalCount: list.length,
+        totalFields,
+        totalApproved,
+        overallApprovalRate: totalFields > 0 ? Math.round((totalApproved / totalFields) * 100) : 0,
+        statusDistribution,
+        docTypeDistribution,
+        dailyTrend,
+        reviewerStats
+      }))
     }
 
     // Create
@@ -722,6 +784,31 @@ export function setupMock() {
       return resolve(config, fail('审核记录不存在', 404))
     }
 
+    // Start review
+    if (url.match(/^\/review\/\d+\/start$/) && method === 'post') {
+      const id = Number(url.split('/')[url.split('/').length - 2])
+      const review = reviews.find(r => r.id === id)
+      if (review) {
+        review.status = 'reviewing'
+        review.startedAt = new Date().toISOString().replace('T', ' ').substring(0, 19)
+        review.updateTime = review.startedAt
+        return resolve(config, ok({ id: review.id, status: review.status, startedAt: review.startedAt }))
+      }
+      return resolve(config, fail('审核记录不存在', 404))
+    }
+
+    // Save comment
+    if (url.match(/^\/review\/\d+\/comment$/) && method === 'put') {
+      const id = Number(url.split('/')[url.split('/').length - 2])
+      const review = reviews.find(r => r.id === id)
+      if (review) {
+        review.reviewComment = body.comment
+        review.updateTime = new Date().toISOString().replace('T', ' ').substring(0, 19)
+        return resolve(config, ok({ id: review.id, reviewComment: review.reviewComment }))
+      }
+      return resolve(config, fail('审核记录不存在', 404))
+    }
+
     // Get fields
     if (url.match(/^\/review\/\d+\/fields$/) && method === 'get') {
       const id = Number(url.split('/')[url.split('/').length - 2])
@@ -797,6 +884,43 @@ export function setupMock() {
     if (url.match(/^\/review\/\d+\/history$/) && method === 'get') {
       const id = Number(url.split('/')[url.split('/').length - 2])
       return resolve(config, ok(reviewHistory[id] || []))
+    }
+
+    // ==================== Notifications ====================
+
+    if (url === '/notifications' && method === 'get') {
+      const limit = Number(query.limit) || 20
+      const notifications: any[] = []
+      reviews.forEach(r => {
+        if (!r.reviewerId) return
+        const hist = reviewHistory[r.id] || []
+        hist.forEach(h => {
+          notifications.push({
+            id: h.id,
+            reviewId: r.id,
+            documentName: r.documentName,
+            documentType: r.documentType,
+            action: h.action,
+            actionLabel: actionLabelMap[h.action] || h.action,
+            detail: h.detail,
+            timestamp: h.timestamp || h.createTime,
+            createTime: h.createTime || h.timestamp,
+            isRead: false
+          })
+        })
+      })
+      notifications.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+      return resolve(config, ok(notifications.slice(0, limit)))
+    }
+
+    if (url === '/notifications/unread-count' && method === 'get') {
+      const pendingCount = reviews.filter(r => r.reviewerId && r.status === 'pending').length
+      const reviewingCount = reviews.filter(r => r.reviewerId && r.status === 'reviewing').length
+      return resolve(config, ok({
+        count: pendingCount + reviewingCount,
+        newAssignments: pendingCount,
+        inReview: reviewingCount
+      }))
     }
 
     // ==================== Prompt Versions ====================
