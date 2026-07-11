@@ -30,6 +30,9 @@ public class NotificationController {
             @RequestParam(defaultValue = "20") int limit,
             HttpServletRequest request) {
         Long currentUserId = getCurrentUserId(request);
+        if (currentUserId == null) {
+            return ApiResponse.error(401, "未授权");
+        }
 
         // Get reviews assigned to current user or reviewed by current user
         List<Review> userReviews = reviewMapper.selectList(
@@ -82,6 +85,9 @@ public class NotificationController {
     @PreAuthorize("isAuthenticated()")
     public ApiResponse<Map<String, Object>> unreadCount(HttpServletRequest request) {
         Long currentUserId = getCurrentUserId(request);
+        if (currentUserId == null) {
+            return ApiResponse.error(401, "未授权");
+        }
 
         List<Review> userReviews = reviewMapper.selectList(
                 new LambdaQueryWrapper<Review>()
