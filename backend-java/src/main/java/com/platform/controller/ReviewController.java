@@ -1,6 +1,7 @@
 package com.platform.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.platform.annotation.OperationLog;
 import com.platform.dto.ApiResponse;
 import com.platform.dto.PageResult;
 import com.platform.entity.business.Review;
@@ -46,6 +47,7 @@ public class ReviewController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('review:create')")
+    @OperationLog(value = "审核工作台", type = "新增")
     public ApiResponse<Map<String, Object>> create(@RequestBody Map<String, Object> body) {
         Review r = reviewService.createReview(body);
         Map<String, Object> result = new LinkedHashMap<>();
@@ -258,6 +260,7 @@ public class ReviewController {
 
     @PostMapping("/{id}/fields/{fieldId}/approve")
     @PreAuthorize("hasAuthority('review:list')")
+    @OperationLog(value = "审核工作台", type = "审核")
     public ApiResponse<Map<String, Object>> approveField(
             @PathVariable Long id,
             @PathVariable Long fieldId,
@@ -273,6 +276,7 @@ public class ReviewController {
 
     @PostMapping("/{id}/fields/{fieldId}/reject")
     @PreAuthorize("hasAuthority('review:list')")
+    @OperationLog(value = "审核工作台", type = "审核")
     public ApiResponse<Map<String, Object>> rejectField(
             @PathVariable Long id,
             @PathVariable Long fieldId,
@@ -290,6 +294,7 @@ public class ReviewController {
 
     @PostMapping("/{id}/fields/{fieldId}/correct")
     @PreAuthorize("hasAuthority('review:list')")
+    @OperationLog(value = "审核工作台", type = "审核")
     public ApiResponse<Map<String, Object>> correctField(
             @PathVariable Long id,
             @PathVariable Long fieldId,
@@ -307,6 +312,7 @@ public class ReviewController {
 
     @PostMapping("/{id}/batch-approve")
     @PreAuthorize("hasAuthority('review:list')")
+    @OperationLog(value = "审核工作台", type = "审核")
     public ApiResponse<Void> batchApprove(
             @PathVariable Long id,
             @RequestBody Map<String, Object> body,
@@ -320,6 +326,7 @@ public class ReviewController {
 
     @PostMapping("/{id}/batch-reject")
     @PreAuthorize("hasAuthority('review:list')")
+    @OperationLog(value = "审核工作台", type = "审核")
     public ApiResponse<Void> batchReject(
             @PathVariable Long id,
             @RequestBody Map<String, Object> body,

@@ -5,6 +5,7 @@ import com.platform.entity.document.Document;
 import com.platform.entity.document.DocumentLayout;
 import com.platform.entity.document.DocumentOcr;
 import com.platform.entity.document.DocumentTable;
+import com.platform.entity.log.AgentTrace;
 import com.platform.entity.pipeline.ExtractionResult;
 import com.platform.entity.pipeline.Pipeline;
 import com.platform.entity.pipeline.ReflectionResult;
@@ -13,6 +14,7 @@ import com.platform.mapper.document.DocumentLayoutMapper;
 import com.platform.mapper.document.DocumentMapper;
 import com.platform.mapper.document.DocumentOcrMapper;
 import com.platform.mapper.document.DocumentTableMapper;
+import com.platform.mapper.log.AgentTraceMapper;
 import com.platform.mapper.pipeline.ExtractionResultMapper;
 import com.platform.mapper.pipeline.PipelineMapper;
 import com.platform.mapper.pipeline.ReflectionResultMapper;
@@ -53,6 +55,7 @@ public class AiPipelineService {
     private final ExtractionResultMapper extractionResultMapper;
     private final ValidationResultMapper validationResultMapper;
     private final ReflectionResultMapper reflectionResultMapper;
+    private final AgentTraceMapper agentTraceMapper;
     private final MinioClient minioClient;
     private final MinioConfig minioConfig;
 
@@ -132,6 +135,17 @@ public class AiPipelineService {
         pipeline.setStartedAt(LocalDateTime.now());
         pipelineMapper.insert(pipeline);
 
+        // Create agent trace record
+        AgentTrace trace = new AgentTrace();
+        trace.setTraceId("trace-" + pipeline.getTaskId());
+        trace.setSessionId("session-" + documentId + "-" + System.currentTimeMillis());
+        trace.setPipelineId(pipeline.getId());
+        trace.setQuery("Pipeline processing for document " + documentId);
+        trace.setStatus("running");
+        trace.setTotalTokens(0);
+        trace.setStartedAt(LocalDateTime.now());
+        agentTraceMapper.insert(trace);
+
         log.info("Starting pipeline for document {} — metadata fields count: {}",
                 documentId, metadataFields != null ? metadataFields.size() : 0);
 
@@ -172,6 +186,14 @@ public class AiPipelineService {
             doc.setStatus("completed");
             documentMapper.updateById(doc);
 
+            // Update agent trace
+            trace.setStatus("completed");
+            trace.setFinishedAt(LocalDateTime.now());
+            if (aiResult.get("duration") instanceof Number duration) {
+                trace.setTotalDuration(duration.doubleValue());
+            }
+            agentTraceMapper.updateById(trace);
+
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("pipelineId", pipeline.getId());
             response.put("documentId", documentId);
@@ -190,6 +212,12 @@ public class AiPipelineService {
             doc.setStatus("failed");
             doc.setErrorMessage(e.getMessage());
             documentMapper.updateById(doc);
+
+            // Update agent trace
+            trace.setStatus("failed");
+            trace.setFinishedAt(LocalDateTime.now());
+            trace.setQuery("Pipeline failed: " + e.getMessage());
+            agentTraceMapper.updateById(trace);
 
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("pipelineId", pipeline.getId());

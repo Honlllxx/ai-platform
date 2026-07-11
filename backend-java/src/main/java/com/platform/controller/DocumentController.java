@@ -2,6 +2,7 @@ package com.platform.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.platform.annotation.OperationLog;
 import com.platform.dto.ApiResponse;
 import com.platform.dto.PageResult;
 import com.platform.entity.document.Document;
@@ -98,6 +99,7 @@ public class DocumentController {
 
     @PostMapping("/upload")
     @PreAuthorize("hasAuthority('document:upload')")
+    @OperationLog(value = "文档管理", type = "上传")
     public ApiResponse<Map<String, Object>> upload(
             @RequestParam("file") MultipartFile file,
             HttpServletRequest request) {
@@ -117,6 +119,7 @@ public class DocumentController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('document:list')")
+    @OperationLog(value = "文档管理", type = "删除")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         documentService.delete(id);
         return ApiResponse.success();
@@ -190,6 +193,7 @@ public class DocumentController {
 
     @PostMapping("/{id}/preprocess")
     @PreAuthorize("hasAuthority('document:list')")
+    @OperationLog(value = "文档管理", type = "预处理")
     public ApiResponse<Map<String, Object>> preprocess(@PathVariable Long id) {
         Map<String, Object> result = aiPipelineService.preprocessDocument(id);
         return ApiResponse.success(result);
@@ -202,6 +206,7 @@ public class DocumentController {
      */
     @PostMapping("/{id}/pipeline")
     @PreAuthorize("hasAuthority('document:list')")
+    @OperationLog(value = "流水线", type = "运行")
     public ApiResponse<Map<String, Object>> submitPipeline(
             @PathVariable Long id,
             @RequestBody(required = false) List<Map<String, String>> metadataFields,

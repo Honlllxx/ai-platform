@@ -1,6 +1,7 @@
 package com.platform.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.platform.annotation.OperationLog;
 import com.platform.dto.ApiResponse;
 import com.platform.dto.PageResult;
 import com.platform.entity.document.Document;
@@ -143,6 +144,7 @@ public class PipelineController {
 
     @PostMapping("/run")
     @PreAuthorize("hasAuthority('pipeline:list')")
+    @OperationLog(value = "流水线", type = "运行")
     public ApiResponse<Map<String, Object>> run(
             @RequestParam Long documentId,
             @RequestBody(required = false) List<Map<String, String>> metadataFields) {
@@ -156,6 +158,7 @@ public class PipelineController {
      */
     @PostMapping("/run-async")
     @PreAuthorize("hasAuthority('pipeline:list')")
+    @OperationLog(value = "流水线", type = "运行")
     public ApiResponse<Map<String, Object>> runAsync(
             @RequestParam Long documentId,
             @RequestBody(required = false) List<Map<String, String>> metadataFields) {

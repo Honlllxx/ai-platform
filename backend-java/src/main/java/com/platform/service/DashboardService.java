@@ -88,7 +88,7 @@ public class DashboardService {
                     .mapToDouble(p -> p.getDuration() != null ? p.getDuration() : 0.0)
                     .average()
                     .orElse(0.0);
-            avgProcessingTime = Math.round(avgProcessingTime / 100.0) / 10.0;
+            avgProcessingTime = Math.round(avgProcessingTime * 10.0) / 10.0;
         }
         data.put("avgProcessingTime", avgProcessingTime);
 
@@ -102,20 +102,23 @@ public class DashboardService {
             LocalDateTime dayStart = day.atStartOfDay();
             LocalDateTime dayEnd = day.plusDays(1).atStartOfDay();
 
-            Long dayDocs = documentMapper.selectCount(
-                    new LambdaQueryWrapper<Document>()
-                            .ge(Document::getCreatedAt, dayStart)
-                            .lt(Document::getCreatedAt, dayEnd));
-
-            Long dayReviews = reviewMapper.selectCount(
+            // Aggregate approved_fields and rejected_fields from reviews created on this day
+            List<Review> dayReviews = reviewMapper.selectList(
                     new LambdaQueryWrapper<Review>()
                             .ge(Review::getCreatedAt, dayStart)
                             .lt(Review::getCreatedAt, dayEnd));
 
+            long autoPassed = dayReviews.stream()
+                    .mapToLong(r -> r.getApprovedFields() != null ? r.getApprovedFields() : 0)
+                    .sum();
+            long manualCorrected = dayReviews.stream()
+                    .mapToLong(r -> r.getRejectedFields() != null ? r.getRejectedFields() : 0)
+                    .sum();
+
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("date", day.toString().substring(5));
-            item.put("autoPassed", dayDocs != null ? dayDocs : 0);
-            item.put("manualCorrected", dayReviews != null ? dayReviews : 0);
+            item.put("autoPassed", autoPassed);
+            item.put("manualCorrected", manualCorrected);
             result.add(item);
         }
         return result;

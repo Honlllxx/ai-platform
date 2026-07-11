@@ -198,16 +198,16 @@ async function loadDashboard() {
   // Load general stats
   try {
     const res = await getDashboardStats()
-    const data = res?.data || res
-    if (data) {
-      stats.userCount = data.userCount || 0
-      stats.todayOperations = data.todayOperations || 0
-      stats.agentCalls = data.agentCalls || 0
-      stats.activeAgents = data.activeAgents || 0
-      stats.autoPassRate = data.autoPassRate || 0
-      stats.manualCorrectionRate = data.manualCorrectionRate || 0
-      stats.costSavings = data.costSavings || 0
-      stats.avgProcessingTime = data.avgProcessingTime || 0
+    const data = res?.data ?? null
+    if (data && typeof data === 'object') {
+      stats.userCount = data.userCount ?? 0
+      stats.todayOperations = data.todayOperations ?? 0
+      stats.agentCalls = data.agentCalls ?? 0
+      stats.activeAgents = data.activeAgents ?? 0
+      stats.autoPassRate = data.autoPassRate ?? 0
+      stats.manualCorrectionRate = data.manualCorrectionRate ?? 0
+      stats.costSavings = data.costSavings ?? 0
+      stats.avgProcessingTime = data.avgProcessingTime ?? 0
     }
   } catch {
     if (import.meta.env.DEV) {
@@ -226,7 +226,7 @@ async function loadDashboard() {
   // Daily processing trend
   try {
     const res = await getDailyProcessing()
-    const data = res?.data || []
+    const data = res?.data ?? []
     const dates = data.map((d: any) => d.date)
     const autoPassed = data.map((d: any) => d.autoPassed)
     const manualCorrected = data.map((d: any) => d.manualCorrected)
@@ -276,7 +276,7 @@ async function loadDashboard() {
   // Document type distribution
   try {
     const res = await getDocTypeDistribution()
-    const data = res?.data || []
+    const data = res?.data ?? []
     docTypePieOption.value = {
       tooltip: { trigger: 'item', formatter: '{b}: {c} 份 ({d}%)' },
       legend: { orient: 'vertical', right: '5%', top: 'center' },
@@ -308,9 +308,9 @@ async function loadDashboard() {
   // Operation trend (existing)
   try {
     const trendRes = await getOperationTrend()
-    const trendData = trendRes?.data || trendRes || []
-    const dates = trendData.map((d: any) => d.date).reverse()
-    const values = trendData.map((d: any) => d.count).reverse()
+    const trendData = trendRes?.data ?? []
+    const dates = trendData.map((d: any) => d.date)
+    const values = trendData.map((d: any) => d.count)
     trendOption.value = {
       tooltip: { trigger: 'axis' },
       grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
@@ -339,7 +339,7 @@ async function loadDashboard() {
   // Operation type distribution (existing)
   try {
     const pieRes = await getOperationTypeDistribution()
-    const pieData = pieRes?.data || pieRes || []
+    const pieData = pieRes?.data ?? []
     pieOption.value = {
       tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
       legend: { orient: 'vertical', right: '5%', top: 'center' },
