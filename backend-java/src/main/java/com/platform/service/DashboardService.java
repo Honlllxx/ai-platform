@@ -56,20 +56,25 @@ public class DashboardService {
                 new LambdaQueryWrapper<AgentTrace>().eq(AgentTrace::getStatus, "running"));
         data.put("activeAgents", activeAgents);
 
-        // Auto pass rate from reviews
-        Long totalApproved = reviewMapper.selectCount(
-                new LambdaQueryWrapper<Review>().gt(Review::getApprovedFields, 0));
-        Long totalRejected = reviewMapper.selectCount(
-                new LambdaQueryWrapper<Review>().gt(Review::getRejectedFields, 0));
-        long totalReviewed = totalApproved + totalRejected;
-        double autoPassRate = totalReviewed > 0
-                ? Math.round(totalApproved * 1000.0 / totalReviewed) / 10.0 : 0.0;
+        // Auto pass rate from reviews (SUM of fields, not COUNT of records)
+        List<Review> allReviews = reviewMapper.selectList(
+                new LambdaQueryWrapper<Review>().isNotNull(Review::getApprovedFields)
+                        .or().isNotNull(Review::getRejectedFields));
+        long totalApprovedFields = allReviews.stream()
+                .mapToLong(r -> r.getApprovedFields() != null ? r.getApprovedFields() : 0)
+                .sum();
+        long totalRejectedFields = allReviews.stream()
+                .mapToLong(r -> r.getRejectedFields() != null ? r.getRejectedFields() : 0)
+                .sum();
+        long totalReviewedFields = totalApprovedFields + totalRejectedFields;
+        double autoPassRate = totalReviewedFields > 0
+                ? Math.round(totalApprovedFields * 1000.0 / totalReviewedFields) / 10.0 : 0.0;
         data.put("autoPassRate", autoPassRate);
-        data.put("manualCorrectionRate", totalReviewed > 0
+        data.put("manualCorrectionRate", totalReviewedFields > 0
                 ? Math.round((100.0 - autoPassRate) * 10.0) / 10.0 : 0.0);
 
         // Cost savings
-        long costSavings = totalApproved * 2;
+        long costSavings = totalApprovedFields * 2;
         data.put("costSavings", costSavings);
 
         // Average processing time
