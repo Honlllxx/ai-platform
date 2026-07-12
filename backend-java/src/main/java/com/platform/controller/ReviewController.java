@@ -338,6 +338,21 @@ public class ReviewController {
         return ApiResponse.success();
     }
 
+    @PostMapping("/{id}/batch-correct")
+    @PreAuthorize("hasAuthority('review:list')")
+    @OperationLog(value = "审核工作台", type = "审核")
+    public ApiResponse<Void> batchCorrect(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) {
+        Long operatorId = getCurrentUserId(request);
+        @SuppressWarnings("unchecked")
+        List<Integer> fieldIds = (List<Integer>) body.getOrDefault("fieldIds", Collections.emptyList());
+        String correctedValue = (String) body.get("correctedValue");
+        reviewService.batchUpdateFieldsWithValue(id, fieldIds.stream().map(Long::valueOf).toList(), "corrected", correctedValue, operatorId);
+        return ApiResponse.success();
+    }
+
     // ==================== History ====================
 
     @GetMapping("/{id}/history")
@@ -351,20 +366,52 @@ public class ReviewController {
         Map<Long, String> userNameMap = reviewService.getUserNameMap(
                 historyPage.getRecords().stream().map(ReviewHistory::getOperatorId)
                         .filter(Objects::nonNull).collect(Collectors.toSet()));
+        // Build field name map for enriched history display
+        Map<Long, String> fieldNameMap = reviewService.getFieldNameMap(
+                historyPage.getRecords().stream().map(ReviewHistory::getFieldId)
+                        .filter(Objects::nonNull).collect(Collectors.toSet()));
         List<Map<String, Object>> records = historyPage.getRecords().stream().map(h -> {
             Map<String, Object> hm = new LinkedHashMap<>();
             hm.put("id", h.getId());
             hm.put("fieldId", h.getFieldId());
+            hm.put("fieldName", h.getFieldId() != null ? fieldNameMap.getOrDefault(h.getFieldId(), "") : "");
             hm.put("action", h.getAction());
             hm.put("operatorId", h.getOperatorId());
             hm.put("operator", userNameMap.getOrDefault(h.getOperatorId(), ""));
             hm.put("detail", h.getDetail());
+            // Parse detail JSON for frontend convenience
+            hm.put("detailParsed", parseDetailJson(h.getAction(), h.getDetail()));
             hm.put("timestamp", h.getCreatedAt());
             hm.put("createTime", h.getCreatedAt());
             return hm;
         }).collect(Collectors.toList());
         return ApiResponse.success(new PageResult<>(
                 records, historyPage.getTotal(), historyPage.getCurrent(), historyPage.getSize()));
+    }
+
+    private Map<String, Object> parseDetailJson(String action, String detail) {
+        Map<String, Object> parsed = new LinkedHashMap<>();
+        if (detail != null && !detail.isBlank()) {
+            try {
+                // Simple JSON parsing for known detail format
+                String content = detail.trim();
+                if (content.startsWith("{")) {
+                    content = content.substring(1, content.length() - 1);
+                    String[] pairs = content.split(",");
+                    for (String pair : pairs) {
+                        String[] kv = pair.split(":", 2);
+                        if (kv.length == 2) {
+                            String key = kv[0].trim().replaceAll("\"", "");
+                            String value = kv[1].trim().replaceAll("\"", "");
+                            parsed.put(key, value);
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+                parsed.put("raw", detail);
+            }
+        }
+        return parsed;
     }
 
     private Long getCurrentUserId(HttpServletRequest request) {
