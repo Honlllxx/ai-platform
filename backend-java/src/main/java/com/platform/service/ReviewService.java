@@ -7,10 +7,14 @@ import com.platform.entity.business.ReviewField;
 import com.platform.entity.business.ReviewHistory;
 import com.platform.entity.document.Document;
 import com.platform.entity.system.User;
+import com.platform.entity.pipeline.ExtractionResult;
+import com.platform.entity.pipeline.Pipeline;
 import com.platform.mapper.business.ReviewFieldMapper;
 import com.platform.mapper.business.ReviewHistoryMapper;
 import com.platform.mapper.business.ReviewMapper;
 import com.platform.mapper.document.DocumentMapper;
+import com.platform.mapper.pipeline.ExtractionResultMapper;
+import com.platform.mapper.pipeline.PipelineMapper;
 import com.platform.mapper.system.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,6 +35,8 @@ public class ReviewService {
     private final ReviewHistoryMapper reviewHistoryMapper;
     private final DocumentMapper documentMapper;
     private final UserMapper userMapper;
+    private final ExtractionResultMapper extractionResultMapper;
+    private final PipelineMapper pipelineMapper;
 
     // === Create ===
 
@@ -69,6 +75,42 @@ public class ReviewService {
             }
             r.setTotalFields(fields.size());
             reviewMapper.updateById(r);
+        } else {
+            // Auto-import fields from extraction_results when pipelineId is provided
+            Long pipelineId = r.getPipelineId();
+            // If no pipelineId, try to find the latest pipeline for this document
+            if (pipelineId == null && r.getDocumentId() != null) {
+                List<Pipeline> docPipelines = pipelineMapper.selectList(
+                        new LambdaQueryWrapper<Pipeline>()
+                                .eq(Pipeline::getDocumentId, r.getDocumentId())
+                                .orderByDesc(Pipeline::getCreatedAt)
+                                .last("LIMIT 1"));
+                if (!docPipelines.isEmpty()) {
+                    pipelineId = docPipelines.get(0).getId();
+                    r.setPipelineId(pipelineId);
+                    reviewMapper.updateById(r);
+                }
+            }
+            if (pipelineId != null) {
+                List<ExtractionResult> extractions = extractionResultMapper.selectList(
+                        new LambdaQueryWrapper<ExtractionResult>()
+                                .eq(ExtractionResult::getPipelineId, pipelineId));
+                if (!extractions.isEmpty()) {
+                    for (ExtractionResult er : extractions) {
+                        ReviewField rf = new ReviewField();
+                        rf.setReviewId(r.getId());
+                        rf.setExtractionId(er.getId());
+                        rf.setFieldName(er.getFieldName());
+                        rf.setFieldCode(er.getFieldCode());
+                        rf.setExtractedValue(er.getExtractedValue());
+                        rf.setConfidence(er.getConfidence() != null ? er.getConfidence() : 0.0);
+                        rf.setStatus("pending");
+                        reviewFieldMapper.insert(rf);
+                    }
+                    r.setTotalFields(extractions.size());
+                    reviewMapper.updateById(r);
+                }
+            }
         }
 
         return r;
@@ -118,6 +160,12 @@ public class ReviewService {
         return users.stream().collect(Collectors.toMap(User::getId, User::getUsername));
     }
 
+    public Map<Long, String> getFieldNameMap(Set<Long> fieldIds) {
+        if (fieldIds.isEmpty()) return Map.of();
+        List<ReviewField> fields = reviewFieldMapper.selectBatchIds(fieldIds);
+        return fields.stream().collect(Collectors.toMap(ReviewField::getId, ReviewField::getFieldName));
+    }
+
     // === Stats ===
 
     public Map<String, Object> getStats() {
@@ -143,13 +191,18 @@ public class ReviewService {
                         .le(Review::getReviewedAt, todayEnd));
         stats.put("todayReviewed", todayReviewed);
 
-        // Approval rate (total approved fields / total reviewed fields)
-        List<Review> allReviews = reviewMapper.selectList(
-                new LambdaQueryWrapper<Review>()
-                        .ne(Review::getStatus, "pending"));
-        long totalFields = allReviews.stream().mapToLong(r -> r.getTotalFields() != null ? r.getTotalFields() : 0).sum();
-        long totalApproved = allReviews.stream().mapToLong(r -> r.getApprovedFields() != null ? r.getApprovedFields() : 0).sum();
-        int approvalRate = totalFields > 0 ? (int) Math.round((double) totalApproved / totalFields * 100) : 0;
+        // Approval rate — count from review_fields table for accuracy
+        List<ReviewField> allFields = reviewFieldMapper.selectList(null);
+        long totalFieldsCount = allFields.size();
+        long totalApprovedCount = allFields.stream()
+                .filter(f -> "approved".equals(f.getStatus()) || "corrected".equals(f.getStatus()))
+                .count();
+        long totalRejectedCount = allFields.stream()
+                .filter(f -> "rejected".equals(f.getStatus()))
+                .count();
+        long totalReviewedCount = totalApprovedCount + totalRejectedCount;
+        int approvalRate = totalReviewedCount > 0
+                ? (int) Math.round((double) totalApprovedCount / totalReviewedCount * 100) : 0;
         stats.put("approvalRate", approvalRate);
 
         // Total reviews
@@ -342,6 +395,17 @@ public class ReviewService {
 
     @Transactional
     public void batchUpdateFields(Long reviewId, List<Long> fieldIds, String status, Long operatorId) {
+        batchUpdateFieldsInternal(reviewId, fieldIds, status, null, operatorId);
+    }
+
+    @Transactional
+    public void batchUpdateFieldsWithValue(Long reviewId, List<Long> fieldIds, String status,
+                                            String correctedValue, Long operatorId) {
+        batchUpdateFieldsInternal(reviewId, fieldIds, status, correctedValue, operatorId);
+    }
+
+    private void batchUpdateFieldsInternal(Long reviewId, List<Long> fieldIds, String status,
+                                            String correctedValue, Long operatorId) {
         Review review = reviewMapper.selectById(reviewId);
         int count = 0;
 
@@ -351,6 +415,9 @@ public class ReviewService {
 
             String oldStatus = field.getStatus();
             field.setStatus(status);
+            if (correctedValue != null) {
+                field.setCorrectedValue(correctedValue);
+            }
             reviewFieldMapper.updateById(field);
 
             if ("pending".equals(oldStatus)) {
@@ -362,6 +429,7 @@ public class ReviewService {
             history.setFieldId(fieldId);
             history.setAction("batch_" + status);
             history.setOperatorId(operatorId);
+            history.setDetail("{\"fieldName\":\"" + field.getFieldName() + "\",\"oldStatus\":\"" + oldStatus + "\",\"newStatus\":\"" + status + "\"}");
             reviewHistoryMapper.insert(history);
         }
 
@@ -373,7 +441,7 @@ public class ReviewService {
                 review.setStartedAt(LocalDateTime.now());
             }
             review.setReviewedFields(review.getReviewedFields() + count);
-            if ("approved".equals(status)) {
+            if ("approved".equals(status) || "corrected".equals(status)) {
                 review.setApprovedFields(review.getApprovedFields() + count);
             } else if ("rejected".equals(status)) {
                 review.setRejectedFields(review.getRejectedFields() + count);
