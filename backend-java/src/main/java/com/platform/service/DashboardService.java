@@ -102,23 +102,20 @@ public class DashboardService {
             LocalDateTime dayStart = day.atStartOfDay();
             LocalDateTime dayEnd = day.plusDays(1).atStartOfDay();
 
-            // Aggregate approved_fields and rejected_fields from reviews created on this day
-            List<Review> dayReviews = reviewMapper.selectList(
+            Long dayDocs = documentMapper.selectCount(
+                    new LambdaQueryWrapper<Document>()
+                            .ge(Document::getCreatedAt, dayStart)
+                            .lt(Document::getCreatedAt, dayEnd));
+
+            Long dayReviews = reviewMapper.selectCount(
                     new LambdaQueryWrapper<Review>()
                             .ge(Review::getCreatedAt, dayStart)
                             .lt(Review::getCreatedAt, dayEnd));
 
-            long autoPassed = dayReviews.stream()
-                    .mapToLong(r -> r.getApprovedFields() != null ? r.getApprovedFields() : 0)
-                    .sum();
-            long manualCorrected = dayReviews.stream()
-                    .mapToLong(r -> r.getRejectedFields() != null ? r.getRejectedFields() : 0)
-                    .sum();
-
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("date", day.toString().substring(5));
-            item.put("autoPassed", autoPassed);
-            item.put("manualCorrected", manualCorrected);
+            item.put("autoPassed", dayDocs != null ? dayDocs : 0);
+            item.put("manualCorrected", dayReviews != null ? dayReviews : 0);
             result.add(item);
         }
         return result;
