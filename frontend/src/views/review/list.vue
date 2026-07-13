@@ -221,6 +221,16 @@
             <el-option label="提单" value="bill_of_lading" />
           </el-select>
         </el-form-item>
+        <el-form-item label="关联流水线">
+          <el-select v-model="createForm.pipelineId" placeholder="选择流水线（自动导入提取字段）" clearable filterable style="width: 100%;">
+            <el-option
+              v-for="p in pipelines"
+              :key="p.id"
+              :label="`#${p.id} ${p.documentName || ''}`"
+              :value="p.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="审核人" prop="reviewerId">
           <el-select v-model="createForm.reviewerId" placeholder="请选择审核人（可选）" clearable filterable style="width: 100%;">
             <el-option
@@ -274,6 +284,7 @@ import {
   type ReviewItem, type ReviewStats
 } from '@/api/review'
 import { getDocuments } from '@/api/document'
+import { getPipelines } from '@/api/pipeline'
 import { getUsers } from '@/api/user'
 import { useTable } from '@/composables/useTable'
 
@@ -294,7 +305,7 @@ const {
   defaultQuery: { status: '', documentType: '', keyword: '' }
 })
 
-const stats = reactive<ReviewStats & { reviewingCount: number }>({
+const stats = reactive<ReviewStats>({
   pendingCount: 0,
   reviewingCount: 0,
   todayReviewed: 0,
@@ -306,8 +317,13 @@ async function loadStats() {
   try {
     const res = await getReviewStats()
     const d = (res as any)?.data || res
-    Object.assign(stats, d)
-    stats.reviewingCount = stats.reviewingCount || 0
+    Object.assign(stats, {
+      pendingCount: d.pendingCount ?? 0,
+      reviewingCount: d.reviewingCount ?? 0,
+      todayReviewed: d.todayReviewed ?? 0,
+      approvalRate: d.approvalRate ?? 0,
+      totalReviews: d.totalReviews ?? 0
+    })
   } catch {
     // Fallback to local computation
     stats.pendingCount = data.value.filter(d => d.status === 'pending').length
@@ -324,6 +340,7 @@ const createFormRef = ref()
 const createForm = reactive({
   documentId: null as number | null,
   documentType: '',
+  pipelineId: null as number | null,
   reviewerId: null as number | null
 })
 const createRules = {
@@ -332,6 +349,7 @@ const createRules = {
 }
 
 const documents = ref<any[]>([])
+const pipelines = ref<any[]>([])
 const userList = ref<any[]>([])
 
 async function loadDocuments() {
@@ -339,6 +357,17 @@ async function loadDocuments() {
     const res = await getDocuments({ page: 1, pageSize: 200 })
     const d = (res as any)?.data || res
     documents.value = d.records || d || []
+  } catch { /* ignore */ }
+}
+
+async function loadPipelines() {
+  try {
+    const res = await getPipelines({ page: 1, pageSize: 200 })
+    const d = (res as any)?.data || res
+    // Only show completed pipelines that have extraction results
+    pipelines.value = (d.records || d || []).filter((p: any) =>
+      p.status === 'completed' || p.status === 'partial'
+    )
   } catch { /* ignore */ }
 }
 
@@ -358,12 +387,14 @@ async function handleCreate() {
     await createReview({
       documentId: createForm.documentId!,
       documentType: createForm.documentType,
+      pipelineId: createForm.pipelineId ?? undefined,
       reviewerId: createForm.reviewerId ?? undefined
     })
     ElMessage.success('审核任务创建成功')
     showCreateDialog.value = false
     createForm.documentId = null
     createForm.documentType = ''
+    createForm.pipelineId = null
     createForm.reviewerId = null
     fetchData()
     loadStats()
@@ -487,7 +518,7 @@ async function handleStartReview(row: ReviewItem) {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchData(), loadStats(), loadDocuments(), loadUsers()])
+  await Promise.all([fetchData(), loadStats(), loadDocuments(), loadPipelines(), loadUsers()])
 })
 </script>
 

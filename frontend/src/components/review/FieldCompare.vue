@@ -228,6 +228,12 @@ function cancelCorrection() {
 }
 
 function handleKeyboard(e: KeyboardEvent) {
+  // Don't handle keyboard shortcuts when editing input fields
+  const target = e.target as HTMLElement
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+    return
+  }
+
   if (e.key === 'Enter') {
     const currentField = props.fields[activeIndex.value]
     if (currentField && canAct(currentField.status)) {

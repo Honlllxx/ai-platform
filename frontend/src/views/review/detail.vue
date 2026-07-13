@@ -193,11 +193,14 @@
               {{ historyActionLabel(item.action) }}
             </el-tag>
             <span v-if="item.operator" class="history-item__operator">{{ item.operator }}</span>
-            <span v-if="item.comment" class="history-item__comment">
-              备注: {{ item.comment }}
+            <span v-if="item.detailParsed?.comment" class="history-item__comment">
+              意见: {{ item.detailParsed.comment }}
             </span>
-            <span v-if="item.newValue" class="history-item__value">
-              &rarr; {{ item.newValue }}
+            <span v-if="item.detailParsed?.oldStatus" class="history-item__change">
+              {{ item.detailParsed.oldStatus }} → {{ item.detailParsed.newStatus }}
+            </span>
+            <span v-if="item.detailParsed?.from && item.detailParsed?.to" class="history-item__change">
+              {{ item.detailParsed.from }} → {{ item.detailParsed.to }}
             </span>
           </div>
         </el-timeline-item>
@@ -329,15 +332,18 @@ async function handleFinalize() {
   try {
     const remaining = pendingCount.value
     const message = remaining > 0
-      ? `还有 ${remaining} 个字段未审核，确认完成审核？`
+      ? `还有 ${remaining} 个字段未审核，确认完成审核？未审核的字段将保持待处理状态。`
       : '确认完成审核？'
     await ElMessageBox.confirm(message, '完成审核', {
       confirmButtonText: '确认',
       cancelButtonText: '取消',
       type: 'warning'
     })
-    await updateReviewStatus(reviewId.value, review.status === 'partial' ? 'partial' : 'approved')
-    review.status = review.status === 'partial' ? 'partial' : 'approved'
+    // Determine final status based on field results
+    const rejectedCount = reviewFields.value.filter(f => f.status === 'rejected').length
+    const finalStatus = rejectedCount === 0 ? 'approved' : 'partial'
+    await updateReviewStatus(reviewId.value, finalStatus)
+    review.status = finalStatus
     ElMessage.success('审核已完成')
     loadHistory()
   } catch {
@@ -492,7 +498,6 @@ async function handleCorrect(fieldId: number, correctedValue: string) {
     if (field) {
       field.status = 'corrected'
       field.correctedValue = correctedValue
-      review.reviewedFields++
     }
     updateReviewCounts()
     ElMessage.success('字段已修正')
@@ -505,9 +510,6 @@ function updateLocalFieldStatus(fieldId: number, status: string) {
   const field = reviewFields.value.find(f => f.id === fieldId)
   if (field && field.status === 'pending') {
     field.status = status as ReviewField['status']
-    review.reviewedFields++
-    if (status === 'approved') review.approvedFields++
-    if (status === 'rejected') review.rejectedFields++
   }
 }
 
@@ -520,16 +522,14 @@ function updateReviewCounts() {
   review.rejectedFields = totalRejected
   review.reviewedFields = totalReviewed
 
-  if (totalReviewed === review.totalFields) {
-    if (totalRejected === 0) {
-      review.status = 'approved'
-    } else if (totalApproved === 0) {
-      review.status = 'rejected'
-    } else {
-      review.status = 'partial'
-    }
+  if (totalReviewed >= review.totalFields && review.totalFields > 0) {
+    review.status = totalRejected === 0 ? 'approved' : 'partial'
   } else if (totalReviewed > 0) {
     review.status = 'partial'
+  } else if (review.status === 'pending') {
+    // Keep pending if no fields reviewed yet
+  } else {
+    review.status = 'reviewing'
   }
 }
 
@@ -582,6 +582,7 @@ function historyIconType(action: string) {
     corrected: 'warning',
     batch_approved: 'success',
     batch_rejected: 'danger',
+    batch_corrected: 'warning',
     assign: 'info',
     start_review: 'primary',
     comment: 'info',
@@ -597,6 +598,7 @@ function historyActionTag(action: string) {
     corrected: 'warning',
     batch_approved: 'success',
     batch_rejected: 'danger',
+    batch_corrected: 'warning',
     assign: 'info',
     start_review: 'primary',
     comment: 'info',
@@ -612,6 +614,7 @@ function historyActionLabel(action: string) {
     corrected: '修正',
     batch_approved: '批量通过',
     batch_rejected: '批量驳回',
+    batch_corrected: '批量修正',
     assign: '分配审核人',
     start_review: '开始审核',
     comment: '审核意见',
@@ -928,6 +931,12 @@ onMounted(() => {
     &__comment {
       font-size: 12px;
       color: $text-secondary;
+    }
+
+    &__change {
+      font-size: 12px;
+      color: $primary-color;
+      font-weight: 500;
     }
 
     &__value {

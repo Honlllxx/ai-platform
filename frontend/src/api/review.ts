@@ -36,6 +36,7 @@ export interface ReviewField {
 
 export interface ReviewStats {
   pendingCount: number
+  reviewingCount: number
   todayReviewed: number
   approvalRate: number
   totalReviews: number
@@ -138,6 +139,10 @@ export function batchApprove(reviewId: number, fieldIds: number[]) {
 
 export function batchReject(reviewId: number, fieldIds: number[]) {
   return request.post(`/review/${reviewId}/batch-reject`, { fieldIds })
+}
+
+export function batchCorrect(reviewId: number, fieldIds: number[], correctedValue?: string) {
+  return request.post(`/review/${reviewId}/batch-correct`, { fieldIds, correctedValue })
 }
 
 // ==================== History ====================

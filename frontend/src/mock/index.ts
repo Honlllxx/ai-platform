@@ -36,6 +36,7 @@ export function setupMock() {
     corrected: '字段修正',
     batch_approved: '批量通过',
     batch_rejected: '批量驳回',
+    batch_corrected: '批量修正',
     comment: '审核意见',
     status_change: '状态变更'
   }
@@ -878,6 +879,19 @@ export function setupMock() {
         })
       }
       return resolve(config, ok({ message: `已批量驳回 ${body.fieldIds.length} 个字段` }))
+    }
+
+    // Batch correct
+    if (url.match(/^\/review\/\d+\/batch-correct$/) && method === 'post') {
+      const id = Number(url.split('/')[url.split('/').length - 2])
+      const fields = reviewFields[id]
+      if (fields) {
+        body.fieldIds.forEach((fid: number) => {
+          const f = fields.find((x: any) => x.id === fid)
+          if (f && f.status === 'pending') { f.status = 'corrected'; f.correctedValue = body.correctedValue; reviews[id - 1].reviewedFields++; }
+        })
+      }
+      return resolve(config, ok({ message: `已批量修正 ${body.fieldIds.length} 个字段` }))
     }
 
     // History
